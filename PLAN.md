@@ -90,13 +90,15 @@ dotnet add ProductCatalog.Tests package Microsoft.AspNetCore.Mvc.Testing
 ## Slice 2 — GET Product (ללא Cache)
 
 **מה בונים:**
-- `Product.cs` — Entity עם Id, Name, Price, Stock, Version
+- `Product.cs` — Entity עם Id, Name, Price, CostPrice, Stock, Version
 - `IProductRepository` — GetById, Add, Update
 - `InMemoryProductRepository` — seed של 3 מוצרים
 - `ProductDto.cs`
+- `ProductProfile.cs` mapper from Entity to Dto
 - `IProductService` + `ProductService.GetProduct` — קורא ישירות ל-Repo
 - `ProductsController` — GET /api/products/{id}
 - `Program.cs` + DI בסיסי
+- `ApplicationServiceExtensions.cs` - משמש לרישום DI מתוך Application
 
 **החלטות עיצוב:**
 
@@ -107,7 +109,6 @@ dotnet add ProductCatalog.Tests package Microsoft.AspNetCore.Mvc.Testing
 **מה אפשר להדגים:**
 - Swagger: GET → 200 OK עם ProductDto
 - GET על ID לא קיים → 404
-
 ---
 
 ## Slice 3 — Cache Layer (Hit / Miss)

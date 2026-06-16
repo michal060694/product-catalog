@@ -28,4 +28,14 @@ public class ProductsController : ControllerBase
         var created = await _service.CreateProductAsync(dto, ct);
         return CreatedAtAction(nameof(GetByIdAsync), new { id = created.Id }, created);
     }
+
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> UpdateAsync(int id, [FromBody] UpdateProductDto dto, CancellationToken ct)
+    {
+        if (id <= 0)
+            return BadRequest(new { message = "Id must be a positive integer." });
+
+        var result = await _service.UpdateProductAsync(id, dto, ct);
+        return result is null ? NotFound() : Ok(result);
+    }
 }

@@ -56,4 +56,21 @@ public class ProductService : IProductService
 
         return _mapper.Map<ProductDto>(product);
     }
+
+    public async Task<ProductDto?> UpdateProductAsync(int id, UpdateProductDto dto, CancellationToken ct = default)
+    {
+        var existing = _repo.GetById(id);
+        if (existing is null)
+            return null;
+
+        _mapper.Map(dto, existing);
+        existing.Version++;
+        _repo.Update(existing);
+
+        var key = CacheKeys.ForProduct(id);
+        await _cache.RemoveAsync(key, ct);
+        _logger.LogInformation("Cache INVALIDATED for key {Key} after update", key);
+
+        return _mapper.Map<ProductDto>(existing);
+    }
 }

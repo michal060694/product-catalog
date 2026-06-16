@@ -27,6 +27,10 @@ public class MemoryProductCache : IProductCache
 
     public Task SetAsync(string key, Product product, CancellationToken ct = default)
     {
+        var existing = _cache.Get<Product>(key);
+        if (existing is not null && existing.Version >= product.Version)
+            return Task.CompletedTask;
+
         var options = new MemoryCacheEntryOptions
         {
             AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_settings.Value.ProductTtlMinutes)
