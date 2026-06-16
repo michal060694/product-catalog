@@ -1,13 +1,19 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using ProductCatalog.Domain.Entities;
+using ProductCatalog.Infrastructure.Cache;
 using ProductCatalog.Infrastructure.TaskStore;
 
 namespace ProductCatalog.Tests.Concurrency;
 
 public class ConcurrencyTests
 {
-    private readonly SharedTaskStore _sut = new(NullLogger<SharedTaskStore>.Instance);
+    private static SharedTaskStore CreateStore(double timeoutSeconds = 30) =>
+        new(NullLogger<SharedTaskStore>.Instance,
+            Options.Create(new CacheSettings { InFlightTimeoutSeconds = timeoutSeconds }));
+
+    private readonly SharedTaskStore _sut = CreateStore();
 
     [Fact]
     public async Task Given_100ConcurrentRequests_WhenCacheMiss_Then_FactoryCalledOnce()
@@ -83,5 +89,28 @@ public class ConcurrencyTests
 
         count1.Should().Be(1);
         count2.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Given_HangingFactory_WhenTimeoutElapsed_Then_NewRequestUsesNewFactory()
+    {
+        var sut = CreateStore(timeoutSeconds: 0.05); // 50 ms
+        var product = new Product { Id = 3, Name = "Monitor", Version = 1 };
+        int secondFactoryCount = 0;
+
+        // start a factory that never resolves
+        _ = sut.GetOrAddAsync("product:3", () => new TaskCompletionSource<Product?>().Task);
+
+        // wait longer than the timeout
+        await Task.Delay(150);
+
+        // a fresh request should invoke a new factory
+        await sut.GetOrAddAsync("product:3", () =>
+        {
+            secondFactoryCount++;
+            return Task.FromResult<Product?>(product);
+        });
+
+        secondFactoryCount.Should().Be(1, "entry was evicted by timeout so a new factory was created");
     }
 }

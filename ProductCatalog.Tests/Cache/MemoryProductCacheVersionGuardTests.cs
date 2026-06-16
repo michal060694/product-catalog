@@ -76,6 +76,45 @@ public class MemoryProductCacheVersionGuardTests
     }
 
     [Fact]
+    public async Task Given_ConcurrentSetAsync_WhenVersionsDiffer_Then_HigherVersionSurvives()
+    {
+        var key = "product:concurrent";
+        const int threadCount = 100;
+
+        var tasks = Enumerable.Range(1, threadCount)
+            .Select(v => _sut.SetAsync(key, new Product { Id = 1, Name = $"v{v}", Price = v, Version = v }))
+            .ToArray();
+
+        await Task.WhenAll(tasks);
+
+        var cached = await _sut.GetAsync(key);
+        cached.Should().NotBeNull();
+        cached!.Version.Should().Be(threadCount);
+    }
+
+    [Fact]
+    public async Task Given_RemoveAsyncCalledWithVersionFloor_WhenStaleSetAsyncFollows_Then_StaleIsRejected()
+    {
+        var key   = "product:floor";
+        var v1    = new Product { Id = 1, Name = "stale",   Price = 100m, Version = 1 };
+        var v2    = new Product { Id = 1, Name = "current", Price = 200m, Version = 2 };
+
+        await _sut.SetAsync(key, v1);
+        await _sut.RemoveAsync(key, minimumVersionFloor: 2);
+
+        // Stale in-flight write (v1 < floor 2) must be rejected
+        await _sut.SetAsync(key, v1);
+        (await _sut.GetAsync(key)).Should().BeNull("stale write must be blocked by version floor");
+
+        // Fresh write at the floor version must succeed
+        await _sut.SetAsync(key, v2);
+        var cached = await _sut.GetAsync(key);
+        cached.Should().NotBeNull();
+        cached!.Version.Should().Be(2);
+        cached.Name.Should().Be("current");
+    }
+
+    [Fact]
     public async Task Given_ShortTtl_WhenTtlExpires_Then_GetReturnsNull()
     {
         var memCache = new MemoryCache(new MemoryCacheOptions());

@@ -9,7 +9,8 @@ public class CreateProductDtoValidator : AbstractValidator<CreateProductDto>
     {
         RuleFor(x => x.Name)
             .NotEmpty()
-            .WithMessage("Name is required.");
+            .Must(n => !string.IsNullOrWhiteSpace(n))
+            .WithMessage("'Name' must not be whitespace only.");
 
         RuleFor(x => x.Price)
             .GreaterThan(0)

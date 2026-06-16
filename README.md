@@ -1,482 +1,257 @@
-# Product Catalog API - Caching Strategy & Consistency
+# Product Catalog Cache API
 
-> Interview Assignment Solution (.NET 8)
+> Interview Assignment — Caching Strategy & Consistency (.NET 8)
 
-## Overview
-
-This project implements a Product Catalog API with a strong focus on caching correctness, consistency, invalidation, expiration policies, and concurrency handling.
-
-The business domain is intentionally simple. The primary goal is to demonstrate architectural decisions and best practices around cache management rather than business complexity.
+A Product Catalog REST API built to demonstrate production-grade caching correctness, consistency, invalidation, expiration, and concurrent-request safety.
 
 ---
 
-## Technologies
+## Tech Stack
 
-- .NET 8
-- ASP.NET Core Web API
-- IMemoryCache
-- AutoMapper
-- FluentValidation
-- xUnit
-- Dependency Injection
+| Layer | Technology |
+|---|---|
+| Runtime | .NET 9 / ASP.NET Core Web API |
+| Cache | `IMemoryCache` (wrapped behind `IProductCache`) |
+| Validation | FluentValidation |
+| Mapping | AutoMapper |
+| Error Handling | Centralized middleware → RFC 7807 ProblemDetails |
+| Testing | xUnit + FakeItEasy + FluentAssertions |
+| Documentation | Swashbuckle (Swagger UI) |
 
 ---
-
-# Architecture
-
-```text
-ProductCatalog.Api
-    ↓
-ProductService
-    ↓
-IProductCache
-    ↓
-MemoryProductCache
-
-ProductService
-    ↓
-IProductRepository
-    ↓
-InMemoryProductRepository
-```
 
 ## Project Structure
 
-```text
-src/
-
-ProductCatalog.Api
-ProductCatalog.Application
-ProductCatalog.Domain
-ProductCatalog.Infrastructure
-ProductCatalog.Tests
 ```
+ProductCatalog.Domain          No dependencies — Entities, Interfaces, Exceptions
+ProductCatalog.Application     Domain only — Services, DTOs, Validators, Mapping
+ProductCatalog.Infrastructure  Domain only — Repository, Cache, SharedTaskStore
+ProductCatalog.Api             Application + Infrastructure — Controllers, Middleware, DI
+ProductCatalog.Tests           Unit tests — xUnit + FakeItEasy
+```
+
+**Architectural constraint:** `Application` has no reference to `Infrastructure`. They are connected only through DI in `Program.cs`.
 
 ---
 
-# Caching Strategy
+## How to Run
 
-Caching is applied only to:
-
-GET /api/products/{id}
-
-Cache Key:
-
-```text
-product:{id}
-```
-
-Example:
-
-```text
-product:42
-```
-
-### Cache Miss
-
-```text
-Request
- ↓
-Cache Miss
- ↓
-Repository
- ↓
-Store in Cache
- ↓
-Response
-```
-
-### Cache Hit
-
-```text
-Request
- ↓
-Cache Hit
- ↓
-Response
-```
-
-### Null Values
-
-Null values are intentionally not cached to avoid stale 404 responses.
-
----
-
-# Cache Invalidation
-
-## Product Creation
-
-POST /api/products
-
-Relevant cache entries are invalidated when necessary.
-
-## Product Update
-
-PUT /api/products/{id}
-
-The corresponding cache entry is removed.
-
-### Why Remove Instead of Update?
-
-The solution uses explicit invalidation instead of active cache updates.
-
-Benefits:
-
-- Lower memory usage
-- Simpler consistency model
-- Prevents stale data
-- Cache is rebuilt only when needed
-
----
-
-# Expiration Strategy
-
-## Absolute Expiration
-
-Example:
-
-```csharp
-TimeSpan.FromMinutes(5)
-```
-
-Reasons:
-
-- Predictable behavior
-- Easy troubleshooting
-- Prevents long-lived stale data
-- Appropriate for product catalog scenarios
-
----
-
-# Advanced Requirement
-
-## Cache Stampede Prevention
-
-Implemented using a SharedTaskStore.
-
-### Problem
-
-Without protection:
-
-```text
-100,000 requests
-      ↓
-100,000 repository calls
-```
-
-### Solution
-
-```text
-100,000 requests
-      ↓
-1 repository call
-      ↓
-Shared Task
-      ↓
-100,000 responses
-```
-
-All concurrent requests for the same product share the same running task.
-
----
-
-# Concurrency Analysis
-
-## Scenario 1
-
-GET before POST
-
-Result:
-
-```text
-404 Not Found
-```
-
-Expected behavior.
-
----
-
-## Scenario 2
-
-POST completed repository write.
-
-GET arrives immediately afterward.
-
-Result:
-
-Product is returned successfully.
-
----
-
-## Scenario 3
-
-GET creates cache while POST is running.
-
-Handled safely.
-
----
-
-## Scenario 4
-
-Cache invalidation during GET.
-
-Most critical race-condition scenario.
-
-The design minimizes stale reads through invalidation and recreation from the repository source of truth.
-
----
-
-## Scenario 5
-
-Concurrent GET requests.
-
-Handled by SharedTaskStore.
-
-Only one repository call executes.
-
----
-
-# Security Considerations
-
-## Cache Keys
-
-Current implementation:
-
-```text
-product:{id}
-```
-
-For authorization-based systems:
-
-```text
-user:{userId}:product:{id}
-```
-
-would be required to prevent cross-user leakage.
-
-## Cache Poisoning
-
-Cache entries are populated only from repository results.
-
-External client input is never written directly into cache storage.
-
-## DTO Usage
-
-DTOs ensure only required fields are exposed.
-
-## Validation
-
-Implemented using FluentValidation.
-
----
-
-# Observability
-
-Recommended logging:
-
-```text
-Cache Hit
-Cache Miss
-Cache Invalidated
-Cache Expired
-Repository Access
-```
-
-These logs simplify diagnostics and troubleshooting.
-
----
-
-# Running the Application
-
-## Prerequisites
-
-.NET 8 SDK
-
-Verify installation:
-
-```bash
-dotnet --version
-```
-
-## Run
+**Prerequisites:** [.NET 9 SDK](https://dotnet.microsoft.com/download)
 
 ```bash
 git clone <repository-url>
-
-cd ProductCatalog
+cd "Caching Strategy & Consistency/Project"
 
 dotnet restore
-
-dotnet run --project src/ProductCatalog.Api
+dotnet build
+dotnet run --project ProductCatalog.Api
 ```
+
+Swagger UI is available at `https://localhost:{port}/swagger` when running in Development mode.
 
 ---
 
-# API Examples
+## API Reference
 
-## Create Product
+| Method | Route | Description |
+|---|---|---|
+| `GET` | `/api/products/{id}` | Fetch product by ID (cached) |
+| `POST` | `/api/products` | Create a new product (invalidates cache) |
+| `PUT` | `/api/products/{id}` | Update a product (invalidates cache) |
 
+### Request & Response Examples
+
+**POST /api/products**
 ```http
 POST /api/products
-```
+Content-Type: application/json
 
-```json
 {
   "name": "Laptop",
-  "price": 1200
+  "price": 4999.99,
+  "costPrice": 3200.00,
+  "stock": 10
+}
+```
+```http
+HTTP/1.1 201 Created
+Location: /api/products/1
+
+{
+  "id": 1,
+  "name": "Laptop",
+  "price": 4999.99,
+  "stock": 10
 }
 ```
 
----
+> `costPrice` is accepted on write but intentionally excluded from `ProductDto` — it is never exposed to the client or written to cache.
 
-## Get Product
-
+**GET /api/products/1**
 ```http
-GET /api/products/1
+HTTP/1.1 200 OK
+
+{
+  "id": 1,
+  "name": "Laptop",
+  "price": 4999.99,
+  "stock": 10
+}
 ```
 
----
-
-## Update Product
-
+**PUT /api/products/1**
 ```http
 PUT /api/products/1
-```
+Content-Type: application/json
 
-```json
 {
   "name": "Gaming Laptop",
-  "price": 1500
+  "price": 5499.99,
+  "costPrice": 3600.00,
+  "stock": 8
+}
+```
+```http
+HTTP/1.1 200 OK
+
+{
+  "id": 1,
+  "name": "Gaming Laptop",
+  "price": 5499.99,
+  "stock": 8
 }
 ```
 
+**Validation errors (400)**
+```http
+GET /api/products/0    → 400 Bad Request
+GET /api/products/-5   → 400 Bad Request
+GET /api/products/99   → 404 Not Found
+```
+
 ---
 
-# Cache Hit / Miss Example
+## Cache Hit / Miss — End-to-End Flow
 
-### First Request
+### Step 1 — First GET (Cache Miss)
 
-```text
+```http
 GET /api/products/1
 ```
 
-Result:
-
-```text
-Cache Miss
-Repository Access
-Cache Store
+```
+[INFO] Cache MISS for key product:1
+[INFO] InFlight CREATED for key product:1
+[INFO] InFlight COMPLETED for key product:1
+→ 200 OK  (fetched from repository, stored in cache)
 ```
 
-### Second Request
+### Step 2 — Second GET (Cache Hit)
 
-```text
+```http
 GET /api/products/1
 ```
 
-Result:
-
-```text
-Cache Hit
-No Repository Access
+```
+[INFO] Cache HIT for key product:1
+→ 200 OK  (served from cache — repository never called)
 ```
 
-### Update Product
+### Step 3 — Update Product (Cache Invalidated)
 
-```text
+```http
 PUT /api/products/1
 ```
 
-Result:
-
-```text
-Cache Invalidated
+```
+[INFO] Cache INVALIDATED for key product:1 after update
+→ 200 OK
 ```
 
-### Next GET
+### Step 4 — Next GET (Cache Miss again)
 
-```text
+```http
 GET /api/products/1
 ```
 
-Result:
-
-```text
-Cache Miss
-Repository Access
-Cache Recreated
+```
+[INFO] Cache MISS for key product:1
+[INFO] InFlight CREATED for key product:1
+[INFO] InFlight COMPLETED for key product:1
+→ 200 OK  (fetched from repository, re-cached)
 ```
 
 ---
 
-# Tests
+## Key Design Decisions
 
-Included test coverage:
+### 1. Caching Abstraction — `IProductCache`
 
-- Cache Hit behavior
-- Cache Miss behavior
-- Cache invalidation
-- Concurrent request handling
-- Exception handling
-- Missing products
-- Edge cases
+`IMemoryCache` is wrapped behind `IProductCache` (defined in `Domain`). This decouples the service layer from the infrastructure completely. Swapping to Redis requires only replacing `MemoryProductCache` — no changes to `ProductService`.
 
-Test Projects:
+### 2. Expiration — Absolute Only
 
-```text
-ProductServiceTests
-CacheTests
-ConcurrencyTests
-ExceptionHandlingTests
+**Absolute expiration** (`5 minutes`, configurable via `CacheSettings`) was chosen over sliding expiration deliberately.
+
+| | Absolute | Sliding |
+|---|---|---|
+| Staleness bound | Guaranteed | Unbounded for hot items |
+| Predictability | High | Low |
+| Troubleshooting | Easy | Hard |
+
+A product catalog is read-heavy but not latency-critical on expiry. Absolute expiration ensures no entry lives beyond its TTL regardless of traffic, preventing silent long-lived stale reads.
+
+### 3. Cache Invalidation — Explicit `Remove` on Mutation
+
+On `PUT` and `POST`, the cache entry is **removed** rather than updated. The next `GET` repopulates from the repository (the single source of truth). This avoids the complexity and risk of synchronizing cache updates with partial writes.
+
+### 4. Null / 404 Not Cached
+
+If a product is not found in the repository, `null` is returned and nothing is written to cache. Caching a `null` result would turn a temporary "not found" into a permanent stale 404 until TTL expiry.
+
+### 5. Cache Stampede Prevention — `SharedTaskStore`
+
+`SharedTaskStore` uses `ConcurrentDictionary<string, Lazy<Task<Product?>>>` to coalesce concurrent in-flight requests for the same key into **one** repository call.
+
+```
+Without protection:  1,000 concurrent GET /api/products/1 → 1,000 repository hits
+With SharedTaskStore: 1,000 concurrent GET /api/products/1 → 1 repository hit
 ```
 
----
+A `Semaphore` was explicitly rejected: it serializes requests (queue), wastes threads, and requires careful release handling. `Lazy<Task<T>>` is lock-free and naturally shares the same `Task` reference.
 
-# AI Usage
+### 6. Version Guard in `SetAsync`
 
-AI tools were used as engineering assistants and discussion partners.
+`MemoryProductCache.SetAsync` checks the existing entry's `Version` before writing. If the cached version is equal to or newer than the incoming one, the write is skipped. This prevents a slow concurrent `GET` from overwriting a newer entry placed by a `PUT`-triggered invalidation + re-read cycle.
 
-All architectural decisions were reviewed, challenged, and validated before implementation.
+### 7. Security
 
----
-
-# Design Decisions Summary
-
-| Area | Decision |
-|--------|----------|
-| Cache Type | IMemoryCache |
-| Pattern | Decorator |
-| Expiration | Absolute Expiration |
-| Invalidation | Explicit Remove |
-| Null Caching | Disabled |
-| Stampede Protection | SharedTaskStore |
-| Validation | FluentValidation |
-| Mapping | AutoMapper |
-| Storage | In-Memory Repository |
-| Tests | xUnit |
+- **Cache key** is `product:{id}` — deterministic and scope-safe for public catalog data. If per-user authorization is added, the key must become `user:{userId}:product:{id}` to prevent cross-user data leakage.
+- **Cache poisoning** is prevented: `SetAsync` accepts only objects returned from the repository, never data from the HTTP request body.
+- **DTO isolation**: `CostPrice` is present on the `Product` entity but excluded from `ProductDto`. It is never cached, never logged, never returned to the client.
 
 ---
 
-# Future Improvements
+## Test Coverage
 
-- Distributed Cache abstraction
-- Redis implementation
-- Cache Metrics Dashboard
-- OpenTelemetry integration
-- Manual Cache Invalidation Endpoint
-- ETag support
-- Advanced cache versioning
+```
+dotnet test
+```
+
+| Suite | Covers |
+|---|---|
+| `ProductServiceCacheTests` | Cache hit / miss / not-found, null not cached |
+| `MemoryProductCacheVersionGuardTests` | Version guard logic, TTL expiry |
+| `ProductServiceCoalescingTests` | SharedTaskStore delegation, cache-hit bypasses store |
+| `ProductServiceCreateTests` | POST flow, invalidation |
+| `ProductServiceUpdateTests` | PUT flow, invalidation, not-found |
+| `ConcurrencyTests` | Concurrent GET coalesces to one repo call |
+| `ExceptionHandlingMiddlewareTests` | ProblemDetails shape for 404 / 400 / 500 |
+
+All tests follow the `Given_When_Then` naming convention. Dependencies are mocked with FakeItEasy; no real HTTP stack is involved.
 
 ---
 
-This solution prioritizes correctness, consistency, maintainability, and predictable cache behavior while keeping business logic intentionally simple.
+## AI Usage
 
-
-examples:
-
-בקשה	תוצאה
-GET /api/products/1	200 OK — {"id":1,"name":"Laptop","price":4999.99,"stock":10} — ללא costPrice
-GET /api/products/99	404 Not Found
-GET /api/products/0	400 Bad Request
-GET /api/products/-5	400 Bad Request
-
+AI tools (Claude) were used throughout this project as an engineering assistant — for architecture discussions, trade-off analysis, and code review. All design decisions were challenged, justified, and validated before implementation. The full interaction log is preserved in `DECISIONS.md`.

@@ -68,7 +68,7 @@ public class ProductServiceCreateTests
 
         await _sut.CreateProductAsync(dto);
 
-        A.CallTo(() => _cache.RemoveAsync(CacheKeys.ForProduct(42), A<CancellationToken>._))
+        A.CallTo(() => _cache.RemoveAsync(CacheKeys.ForProduct(42), A<int>._, A<CancellationToken>._))
             .MustHaveHappenedOnceExactly();
     }
 

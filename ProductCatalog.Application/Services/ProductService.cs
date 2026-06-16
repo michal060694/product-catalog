@@ -61,7 +61,7 @@ public class ProductService : IProductService
         _repo.Add(product);
 
         var key = CacheKeys.ForProduct(product.Id);
-        await _cache.RemoveAsync(key, ct);
+        await _cache.RemoveAsync(key, ct: ct);
 
         _logger.LogInformation("Created product with Id {Id}", product.Id);
 
@@ -79,7 +79,7 @@ public class ProductService : IProductService
         _repo.Update(existing);
 
         var key = CacheKeys.ForProduct(id);
-        await _cache.RemoveAsync(key, ct);
+        await _cache.RemoveAsync(key, existing.Version, ct);
         _logger.LogInformation("Cache INVALIDATED for key {Key} after update", key);
 
         return _mapper.Map<ProductDto>(existing);
