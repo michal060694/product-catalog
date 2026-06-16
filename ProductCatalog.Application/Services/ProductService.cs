@@ -2,6 +2,7 @@ using AutoMapper;
 using Microsoft.Extensions.Logging;
 using ProductCatalog.Application.DTOs;
 using ProductCatalog.Domain.Cache;
+using ProductCatalog.Domain.Entities;
 using ProductCatalog.Domain.Repositories;
 
 namespace ProductCatalog.Application.Services;
@@ -39,6 +40,20 @@ public class ProductService : IProductService
             return null;
 
         await _cache.SetAsync(key, product, ct);
+        return _mapper.Map<ProductDto>(product);
+    }
+
+    public async Task<ProductDto> CreateProductAsync(CreateProductDto dto, CancellationToken ct = default)
+    {
+        var product = _mapper.Map<Product>(dto);
+
+        _repo.Add(product);
+
+        var key = CacheKeys.ForProduct(product.Id);
+        await _cache.RemoveAsync(key, ct);
+
+        _logger.LogInformation("Created product with Id {Id}", product.Id);
+
         return _mapper.Map<ProductDto>(product);
     }
 }

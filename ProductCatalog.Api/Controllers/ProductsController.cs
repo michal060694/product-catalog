@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using ProductCatalog.Application.DTOs;
 using ProductCatalog.Application.Services;
 
 namespace ProductCatalog.Api.Controllers;
@@ -19,5 +20,12 @@ public class ProductsController : ControllerBase
 
         var dto = await _service.GetProductAsync(id, ct);
         return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateAsync([FromBody] CreateProductDto dto, CancellationToken ct)
+    {
+        var created = await _service.CreateProductAsync(dto, ct);
+        return CreatedAtAction(nameof(GetByIdAsync), new { id = created.Id }, created);
     }
 }
