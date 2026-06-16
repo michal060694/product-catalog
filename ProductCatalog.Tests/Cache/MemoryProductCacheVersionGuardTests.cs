@@ -74,4 +74,21 @@ public class MemoryProductCacheVersionGuardTests
         cached.Should().NotBeNull();
         cached!.Version.Should().Be(1);
     }
+
+    [Fact]
+    public async Task Given_ShortTtl_WhenTtlExpires_Then_GetReturnsNull()
+    {
+        var memCache = new MemoryCache(new MemoryCacheOptions());
+        var settings = Options.Create(new CacheSettings { ProductTtlMinutes = 1.0 / 600.0 }); // ~100ms
+        var sut = new MemoryProductCache(memCache, settings, NullLogger<MemoryProductCache>.Instance);
+
+        var key     = "product:ttl";
+        var product = new Product { Id = 1, Name = "Expiry Test", Price = 99m, Version = 1 };
+
+        await sut.SetAsync(key, product);
+        await Task.Delay(200);
+        var cached = await sut.GetAsync(key);
+
+        cached.Should().BeNull();
+    }
 }

@@ -7,6 +7,7 @@ using ProductCatalog.Application.Services;
 using ProductCatalog.Domain.Cache;
 using ProductCatalog.Domain.Entities;
 using ProductCatalog.Domain.Repositories;
+using ProductCatalog.Domain.Exceptions;
 using ProductCatalog.Domain.TaskStore;
 
 namespace ProductCatalog.Tests.Services;
@@ -92,13 +93,12 @@ public class ProductServiceUpdateTests
     }
 
     [Fact]
-    public async Task Given_ProductNotFound_WhenUpdateProductAsync_Then_ReturnsNull()
+    public async Task Given_ProductNotFound_WhenUpdateProductAsync_Then_ThrowsProductNotFoundException()
     {
         A.CallTo(() => _repo.GetById(999)).Returns(null);
 
-        var result = await _sut.UpdateProductAsync(999, new UpdateProductDto("X", 1m, 0));
-
-        result.Should().BeNull();
+        await _sut.Invoking(s => s.UpdateProductAsync(999, new UpdateProductDto("X", 1m, 0)))
+            .Should().ThrowAsync<ProductNotFoundException>();
     }
 
     [Fact]
@@ -106,7 +106,8 @@ public class ProductServiceUpdateTests
     {
         A.CallTo(() => _repo.GetById(999)).Returns(null);
 
-        await _sut.UpdateProductAsync(999, new UpdateProductDto("X", 1m, 0));
+        await _sut.Invoking(s => s.UpdateProductAsync(999, new UpdateProductDto("X", 1m, 0)))
+            .Should().ThrowAsync<ProductNotFoundException>();
 
         A.CallTo(() => _repo.Update(A<Product>._)).MustNotHaveHappened();
     }

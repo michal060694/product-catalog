@@ -7,6 +7,7 @@ using ProductCatalog.Application.Services;
 using ProductCatalog.Domain.Cache;
 using ProductCatalog.Domain.Entities;
 using ProductCatalog.Domain.Repositories;
+using ProductCatalog.Domain.Exceptions;
 using ProductCatalog.Domain.TaskStore;
 
 namespace ProductCatalog.Tests.Cache;
@@ -77,15 +78,15 @@ public class ProductServiceCacheTests
     }
 
     [Fact]
-    public async Task Given_ProductNotFound_WhenGetProductAsync_Then_ReturnsNull_AndDoesNotCache()
+    public async Task Given_ProductNotFound_WhenGetProductAsync_Then_ThrowsProductNotFoundException_AndDoesNotCache()
     {
         A.CallTo(() => _cache.GetAsync(CacheKeys.ForProduct(99), A<CancellationToken>._))
             .Returns(Task.FromResult<Product?>(null));
         A.CallTo(() => _repo.GetById(99)).Returns(null);
 
-        var result = await _sut.GetProductAsync(99);
+        await _sut.Invoking(s => s.GetProductAsync(99))
+            .Should().ThrowAsync<ProductNotFoundException>();
 
-        result.Should().BeNull();
         A.CallTo(() => _cache.SetAsync(A<string>._, A<Product>._, A<CancellationToken>._))
             .MustNotHaveHappened();
     }

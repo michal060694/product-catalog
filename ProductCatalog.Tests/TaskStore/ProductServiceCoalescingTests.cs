@@ -7,6 +7,7 @@ using ProductCatalog.Application.Services;
 using ProductCatalog.Domain.Cache;
 using ProductCatalog.Domain.Entities;
 using ProductCatalog.Domain.Repositories;
+using ProductCatalog.Domain.Exceptions;
 using ProductCatalog.Domain.TaskStore;
 
 namespace ProductCatalog.Tests.TaskStore;
@@ -68,16 +69,15 @@ public class ProductServiceCoalescingTests
     }
 
     [Fact]
-    public async Task Given_TaskStore_ReturnsNull_WhenGetProductAsync_Then_ReturnsNull()
+    public async Task Given_TaskStore_ReturnsNull_WhenGetProductAsync_Then_ThrowsProductNotFoundException()
     {
         A.CallTo(() => _cache.GetAsync(CacheKeys.ForProduct(99), A<CancellationToken>._))
             .Returns(Task.FromResult<Product?>(null));
         A.CallTo(() => _taskStore.GetOrAddAsync(CacheKeys.ForProduct(99), A<Func<Task<Product?>>>._))
             .Returns(Task.FromResult<Product?>(null));
 
-        var result = await _sut.GetProductAsync(99);
-
-        result.Should().BeNull();
+        await _sut.Invoking(s => s.GetProductAsync(99))
+            .Should().ThrowAsync<ProductNotFoundException>();
     }
 
     [Fact]
