@@ -470,3 +470,13 @@ All architectural decisions were reviewed, challenged, and validated before impl
 ---
 
 This solution prioritizes correctness, consistency, maintainability, and predictable cache behavior while keeping business logic intentionally simple.
+
+
+examples:
+
+בקשה	תוצאה
+GET /api/products/1	200 OK — {"id":1,"name":"Laptop","price":4999.99,"stock":10} — ללא costPrice
+GET /api/products/99	404 Not Found
+GET /api/products/0	400 Bad Request
+GET /api/products/-5	400 Bad Request
+
