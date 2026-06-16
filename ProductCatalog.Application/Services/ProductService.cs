@@ -42,9 +42,10 @@ public class ProductService : IProductService
 
         var product = await _taskStore.GetOrAddAsync(key, async () =>
         {
+            var gen = await _cache.GetGenerationAsync(key, ct);
             var p = _repo.GetById(id);
             if (p is not null)
-                await _cache.SetAsync(key, p, CancellationToken.None);
+                await _cache.SetAsync(key, p, gen, CancellationToken.None);
             return p;
         });
 
@@ -61,7 +62,7 @@ public class ProductService : IProductService
         _repo.Add(product);
 
         var key = CacheKeys.ForProduct(product.Id);
-        await _cache.RemoveAsync(key, ct: ct);
+        await _cache.RemoveAsync(key, ct);
 
         _logger.LogInformation("Created product with Id {Id}", product.Id);
 
@@ -79,7 +80,7 @@ public class ProductService : IProductService
         _repo.Update(existing);
 
         var key = CacheKeys.ForProduct(id);
-        await _cache.RemoveAsync(key, existing.Version, ct);
+        await _cache.RemoveAsync(key, ct);
         _logger.LogInformation("Cache INVALIDATED for key {Key} after update", key);
 
         return _mapper.Map<ProductDto>(existing);

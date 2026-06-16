@@ -1,0 +1,8 @@
+services:
+  productcatalog:
+    build: .
+    image: productcatalog:latest
+    ports:
+      - "5115:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development

@@ -16,7 +16,7 @@ public class MemoryProductCache : IProductCache
     
     // For very large catalogs (100k+ keys), replace with 64 striped locks to cap memory usage.
     private readonly ConcurrentDictionary<string, object> _keyLocks = new();
-    private readonly ConcurrentDictionary<string, int> _versionFloor = new();
+    private readonly ConcurrentDictionary<string, long> _generations = new();
 
     public MemoryProductCache(IMemoryCache cache, IOptions<CacheSettings> settings, ILogger<MemoryProductCache> logger)
     {
@@ -31,14 +31,18 @@ public class MemoryProductCache : IProductCache
         return Task.FromResult(product);
     }
 
-    public Task SetAsync(string key, Product product, CancellationToken ct = default)
+    public Task<long> GetGenerationAsync(string key, CancellationToken ct = default)
+    {
+        return Task.FromResult(_generations.GetValueOrDefault(key, 0L));
+    }
+
+    public Task SetAsync(string key, Product product, long expectedGeneration, CancellationToken ct = default)
     {
         var lockObj = _keyLocks.GetOrAdd(key, _ => new object());
 
         lock (lockObj)
         {
-            var floor = _versionFloor.GetValueOrDefault(key, 0);
-            if (product.Version < floor)
+            if (_generations.GetValueOrDefault(key, 0L) != expectedGeneration)
                 return Task.CompletedTask;
 
             var existing = _cache.Get<Product>(key);
@@ -55,12 +59,15 @@ public class MemoryProductCache : IProductCache
         return Task.CompletedTask;
     }
 
-    public Task RemoveAsync(string key, int minimumVersionFloor = 0, CancellationToken ct = default)
+    public Task RemoveAsync(string key, CancellationToken ct = default)
     {
-        _cache.Remove(key);
+        var lockObj = _keyLocks.GetOrAdd(key, _ => new object());
 
-        if (minimumVersionFloor > 0)
-            _versionFloor.AddOrUpdate(key, minimumVersionFloor, (_, existing) => Math.Max(existing, minimumVersionFloor));
+        lock (lockObj)
+        {
+            _cache.Remove(key);
+            _generations.AddOrUpdate(key, 1L, (_, g) => g + 1);
+        }
 
         return Task.CompletedTask;
     }

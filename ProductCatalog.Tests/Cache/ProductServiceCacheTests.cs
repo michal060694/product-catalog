@@ -57,7 +57,7 @@ public class ProductServiceCacheTests
         result.Should().NotBeNull();
         result!.Id.Should().Be(1);
         result.Name.Should().Be("Laptop");
-        A.CallTo(() => _cache.SetAsync(CacheKeys.ForProduct(1), product, A<CancellationToken>._))
+        A.CallTo(() => _cache.SetAsync(CacheKeys.ForProduct(1), product, A<long>._, A<CancellationToken>._))
             .MustHaveHappenedOnceExactly();
     }
 
@@ -73,7 +73,7 @@ public class ProductServiceCacheTests
         result.Should().NotBeNull();
         result!.Id.Should().Be(2);
         A.CallTo(() => _repo.GetById(A<int>._)).MustNotHaveHappened();
-        A.CallTo(() => _cache.SetAsync(A<string>._, A<Product>._, A<CancellationToken>._))
+        A.CallTo(() => _cache.SetAsync(A<string>._, A<Product>._, A<long>._, A<CancellationToken>._))
             .MustNotHaveHappened();
     }
 
@@ -87,7 +87,7 @@ public class ProductServiceCacheTests
         await _sut.Invoking(s => s.GetProductAsync(99))
             .Should().ThrowAsync<ProductNotFoundException>();
 
-        A.CallTo(() => _cache.SetAsync(A<string>._, A<Product>._, A<CancellationToken>._))
+        A.CallTo(() => _cache.SetAsync(A<string>._, A<Product>._, A<long>._, A<CancellationToken>._))
             .MustNotHaveHappened();
     }
 }

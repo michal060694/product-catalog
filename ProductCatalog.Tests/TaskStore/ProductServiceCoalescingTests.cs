@@ -12,21 +12,13 @@ using ProductCatalog.Domain.TaskStore;
 
 namespace ProductCatalog.Tests.TaskStore;
 
-public class ProductServiceCoalescingTests
+public class ProductServiceCoalescingTests :BaseTests
 {
-    private readonly IProductRepository _repo;
-    private readonly IProductCache _cache;
-    private readonly ISharedTaskStore _taskStore;
-    private readonly IMapper _mapper;
+   
     private readonly ProductService _sut;
 
     public ProductServiceCoalescingTests()
     {
-        _repo      = A.Fake<IProductRepository>();
-        _cache     = A.Fake<IProductCache>();
-        _taskStore = A.Fake<ISharedTaskStore>();
-        _mapper    = A.Fake<IMapper>();
-
         A.CallTo(() => _mapper.Map<ProductDto>(A<object>._))
             .ReturnsLazily(call =>
             {
@@ -34,8 +26,7 @@ public class ProductServiceCoalescingTests
                 return new ProductDto(p.Id, p.Name, p.Price, p.Stock);
             });
 
-        _sut = new ProductService(_repo, _cache, _taskStore, _mapper,
-                                  NullLogger<ProductService>.Instance);
+        _sut = new ProductService(_repo, _cache, _taskStore, _mapper, NullLogger<ProductService>.Instance);
     }
 
     [Fact]

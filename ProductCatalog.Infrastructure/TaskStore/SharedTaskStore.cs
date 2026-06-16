@@ -42,7 +42,6 @@ public class SharedTaskStore : ISharedTaskStore
                 TaskContinuationOptions.None,
                 TaskScheduler.Default);
 
-            // safety-net: remove the entry even if the factory never completes
             _ = Task.Delay(_timeout).ContinueWith(
                 t => _inFlight.TryRemove(key, out _),
                 CancellationToken.None,

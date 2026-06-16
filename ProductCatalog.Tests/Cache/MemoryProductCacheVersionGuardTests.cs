@@ -25,8 +25,8 @@ public class MemoryProductCacheVersionGuardTests
         var fresh = new Product { Id = 1, Name = "After PUT",  Price = 200m, Version = 2 };
         var stale = new Product { Id = 1, Name = "Before PUT", Price = 100m, Version = 1 };
 
-        await _sut.SetAsync(key, fresh);
-        await _sut.SetAsync(key, stale);
+        await _sut.SetAsync(key, fresh, expectedGeneration: 0L);
+        await _sut.SetAsync(key, stale, expectedGeneration: 0L);
 
         var cached = await _sut.GetAsync(key);
         cached!.Version.Should().Be(2);
@@ -40,8 +40,8 @@ public class MemoryProductCacheVersionGuardTests
         var first    = new Product { Id = 1, Name = "First",  Price = 100m, Version = 2 };
         var samever  = new Product { Id = 1, Name = "Second", Price = 200m, Version = 2 };
 
-        await _sut.SetAsync(key, first);
-        await _sut.SetAsync(key, samever);
+        await _sut.SetAsync(key, first,   expectedGeneration: 0L);
+        await _sut.SetAsync(key, samever, expectedGeneration: 0L);
 
         var cached = await _sut.GetAsync(key);
         cached!.Name.Should().Be("First");
@@ -54,8 +54,8 @@ public class MemoryProductCacheVersionGuardTests
         var old   = new Product { Id = 1, Name = "Old", Price = 100m, Version = 1 };
         var newer = new Product { Id = 1, Name = "New", Price = 200m, Version = 2 };
 
-        await _sut.SetAsync(key, old);
-        await _sut.SetAsync(key, newer);
+        await _sut.SetAsync(key, old,   expectedGeneration: 0L);
+        await _sut.SetAsync(key, newer, expectedGeneration: 0L);
 
         var cached = await _sut.GetAsync(key);
         cached!.Version.Should().Be(2);
@@ -68,7 +68,7 @@ public class MemoryProductCacheVersionGuardTests
         var key     = "product:1";
         var product = new Product { Id = 1, Name = "Laptop", Price = 4999m, Version = 1 };
 
-        await _sut.SetAsync(key, product);
+        await _sut.SetAsync(key, product, expectedGeneration: 0L);
 
         var cached = await _sut.GetAsync(key);
         cached.Should().NotBeNull();
@@ -82,7 +82,7 @@ public class MemoryProductCacheVersionGuardTests
         const int threadCount = 100;
 
         var tasks = Enumerable.Range(1, threadCount)
-            .Select(v => _sut.SetAsync(key, new Product { Id = 1, Name = $"v{v}", Price = v, Version = v }))
+            .Select(v => _sut.SetAsync(key, new Product { Id = 1, Name = $"v{v}", Price = v, Version = v }, expectedGeneration: 0L))
             .ToArray();
 
         await Task.WhenAll(tasks);
@@ -93,25 +93,47 @@ public class MemoryProductCacheVersionGuardTests
     }
 
     [Fact]
-    public async Task Given_RemoveAsyncCalledWithVersionFloor_WhenStaleSetAsyncFollows_Then_StaleIsRejected()
+    public async Task Given_RemoveAsync_WhenStaleSetAsyncUsesOldGeneration_Then_WriteIsRejected()
     {
-        var key   = "product:floor";
-        var v1    = new Product { Id = 1, Name = "stale",   Price = 100m, Version = 1 };
-        var v2    = new Product { Id = 1, Name = "current", Price = 200m, Version = 2 };
+        var key   = "product:gen";
+        var stale = new Product { Id = 1, Name = "stale", Price = 100m, Version = 1 };
 
-        await _sut.SetAsync(key, v1);
-        await _sut.RemoveAsync(key, minimumVersionFloor: 2);
+        var genBefore = await _sut.GetGenerationAsync(key);   // 0
 
-        // Stale in-flight write (v1 < floor 2) must be rejected
-        await _sut.SetAsync(key, v1);
-        (await _sut.GetAsync(key)).Should().BeNull("stale write must be blocked by version floor");
+        await _sut.RemoveAsync(key);                          // gen → 1
 
-        // Fresh write at the floor version must succeed
-        await _sut.SetAsync(key, v2);
+        await _sut.SetAsync(key, stale, genBefore);           // 0 ≠ 1 → rejected
+
+        (await _sut.GetAsync(key)).Should().BeNull("stale write must be rejected by generation mismatch");
+    }
+
+    [Fact]
+    public async Task Given_RemoveAsync_WhenFreshSetAsyncUsesCapturedGeneration_Then_Succeeds()
+    {
+        var key     = "product:gen";
+        var product = new Product { Id = 1, Name = "current", Price = 200m, Version = 2 };
+
+        await _sut.RemoveAsync(key);                         // gen → 1
+
+        var genAfter = await _sut.GetGenerationAsync(key);   // 1
+        await _sut.SetAsync(key, product, genAfter);         // 1 == 1 → accepted
+
         var cached = await _sut.GetAsync(key);
         cached.Should().NotBeNull();
         cached!.Version.Should().Be(2);
         cached.Name.Should().Be("current");
+    }
+
+    [Fact]
+    public async Task Given_MultipleRemoves_WhenEachRemove_Then_GenerationIncrements()
+    {
+        var key = "product:gen2";
+
+        await _sut.RemoveAsync(key);   // gen → 1
+        await _sut.RemoveAsync(key);   // gen → 2
+
+        var gen = await _sut.GetGenerationAsync(key);
+        gen.Should().Be(2);
     }
 
     [Fact]
@@ -124,7 +146,7 @@ public class MemoryProductCacheVersionGuardTests
         var key     = "product:ttl";
         var product = new Product { Id = 1, Name = "Expiry Test", Price = 99m, Version = 1 };
 
-        await sut.SetAsync(key, product);
+        await sut.SetAsync(key, product, expectedGeneration: 0L);
         await Task.Delay(200);
         var cached = await sut.GetAsync(key);
 
