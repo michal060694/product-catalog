@@ -4,5 +4,5 @@ namespace ProductCatalog.Application.Services;
 
 public interface IProductService
 {
-    ProductDto? GetProduct(int id);
+    Task<ProductDto?> GetProductAsync(int id, CancellationToken ct = default);
 }
