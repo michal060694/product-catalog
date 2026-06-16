@@ -184,7 +184,7 @@ dotnet add ProductCatalog.Tests package Microsoft.AspNetCore.Mvc.Testing
 
 ---
 
-## Slice 6 — Request Coalescing (SharedTaskStore) ⭐
+## Slice 6 — Request Coalescing (SharedTaskStore) 
 
 **מה בונים:**
 - `ISharedTaskStore` — GetOrAdd, Remove

@@ -14,13 +14,7 @@ public class ProductsController : ControllerBase
 
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetByIdAsync(int id, CancellationToken ct)
-    {
-        if (id <= 0)
-            return BadRequest(new { message = "Id must be a positive integer." });
-
-        var dto = await _service.GetProductAsync(id, ct);
-        return dto is null ? NotFound() : Ok(dto);
-    }
+        => Ok(await _service.GetProductAsync(id, ct));
 
     [HttpPost]
     public async Task<IActionResult> CreateAsync([FromBody] CreateProductDto dto, CancellationToken ct)
@@ -31,11 +25,5 @@ public class ProductsController : ControllerBase
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> UpdateAsync(int id, [FromBody] UpdateProductDto dto, CancellationToken ct)
-    {
-        if (id <= 0)
-            return BadRequest(new { message = "Id must be a positive integer." });
-
-        var result = await _service.UpdateProductAsync(id, dto, ct);
-        return result is null ? NotFound() : Ok(result);
-    }
+        => Ok(await _service.UpdateProductAsync(id, dto, ct));
 }

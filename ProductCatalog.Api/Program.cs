@@ -1,4 +1,5 @@
 using FluentValidation.AspNetCore;
+using ProductCatalog.Api.Extensions;
 using ProductCatalog.Application.Extensions;
 using ProductCatalog.Infrastructure.Extensions;
 
@@ -20,6 +21,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseExceptionHandling();
 app.UseHttpsRedirection();
 app.MapControllers();
 app.Run();

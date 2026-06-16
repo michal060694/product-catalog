@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using ProductCatalog.Application.DTOs;
 using ProductCatalog.Domain.Cache;
 using ProductCatalog.Domain.Entities;
+using ProductCatalog.Domain.Exceptions;
 using ProductCatalog.Domain.Repositories;
 using ProductCatalog.Domain.TaskStore;
 
@@ -26,7 +27,7 @@ public class ProductService : IProductService
         _logger = logger;
     }
 
-    public async Task<ProductDto?> GetProductAsync(int id, CancellationToken ct = default)
+    public async Task<ProductDto> GetProductAsync(int id, CancellationToken ct = default)
     {
         var key = CacheKeys.ForProduct(id);
 
@@ -47,7 +48,10 @@ public class ProductService : IProductService
             return p;
         });
 
-        return product is null ? null : _mapper.Map<ProductDto>(product);
+        if (product is null)
+            throw new ProductNotFoundException(id);
+
+        return _mapper.Map<ProductDto>(product);
     }
 
     public async Task<ProductDto> CreateProductAsync(CreateProductDto dto, CancellationToken ct = default)
@@ -64,11 +68,11 @@ public class ProductService : IProductService
         return _mapper.Map<ProductDto>(product);
     }
 
-    public async Task<ProductDto?> UpdateProductAsync(int id, UpdateProductDto dto, CancellationToken ct = default)
+    public async Task<ProductDto> UpdateProductAsync(int id, UpdateProductDto dto, CancellationToken ct = default)
     {
         var existing = _repo.GetById(id);
         if (existing is null)
-            return null;
+            throw new ProductNotFoundException(id);
 
         _mapper.Map(dto, existing);
         existing.Version++;
