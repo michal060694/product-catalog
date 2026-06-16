@@ -1,33 +1,33 @@
-# תכנית פיתוח — Product Catalog Cache API
-### Vertical Slices · כל Increment ניתן להדגמה
+# Development Plan — Product Catalog Cache API
+### Vertical Slices · Every Increment is Demo-Ready
 
 ---
 
-## כללי
+## General
 
 | | |
 |---|---|
-| **גישה** | Vertical Slices — מקצה לקצה בכל משימה |
-| **אפשר לעצור** | אחרי Slice 5 — API מלא עובד עם Caching |
+| **Approach** | Vertical Slices — End-to-end per task |
+| **Can stop** | After Slice 5 — Full API working with Caching |
 
 ---
 
-## Slice 1 — הקמת Solution וקשרים בין הפרויקטים
+## Slice 1 — Solution Setup and Project References
 
-**מה בונים:**
+**What we build:**
 
 ```bash
-# יצירת ה-Solution
+# Create the Solution
 dotnet new sln -n ProductCatalog
 
-# יצירת הפרויקטים
+# Create the Projects
 dotnet new webapi -n ProductCatalog.Api          --no-openapi false
 dotnet new classlib -n ProductCatalog.Application
 dotnet new classlib -n ProductCatalog.Domain
 dotnet new classlib -n ProductCatalog.Infrastructure
 dotnet new xunit -n ProductCatalog.Tests
 
-# הוספה ל-Solution
+# Add to Solution
 dotnet sln add ProductCatalog.Api/ProductCatalog.Api.csproj
 dotnet sln add ProductCatalog.Application/ProductCatalog.Application.csproj
 dotnet sln add ProductCatalog.Domain/ProductCatalog.Domain.csproj
@@ -35,10 +35,10 @@ dotnet sln add ProductCatalog.Infrastructure/ProductCatalog.Infrastructure.cspro
 dotnet sln add ProductCatalog.Tests/ProductCatalog.Tests.csproj
 ```
 
-**קשרים בין הפרויקטים (Project References):**
+**Project References:**
 
 ```
-Domain        ← אין תלויות (הבסיס)
+Domain        ← No dependencies (the base)
 Application   ← Domain
 Infrastructure← Domain
 Api           ← Application + Infrastructure
@@ -56,7 +56,7 @@ dotnet add ProductCatalog.Application reference ProductCatalog.Domain
 # Infrastructure → Domain
 dotnet add ProductCatalog.Infrastructure reference ProductCatalog.Domain
 
-# Tests → כולם
+# Tests → all
 dotnet add ProductCatalog.Tests reference ProductCatalog.Application
 dotnet add ProductCatalog.Tests reference ProductCatalog.Infrastructure
 ```
@@ -81,183 +81,175 @@ dotnet add ProductCatalog.Tests package FluentAssertions
 dotnet add ProductCatalog.Tests package Microsoft.AspNetCore.Mvc.Testing
 ```
 
-**מה אפשר להדגים:**
-- `dotnet build` — הכל עובר compile ללא שגיאות
-- אין circular references — Domain לא מכיר אף פרויקט אחר
+**What you can demo:**
+- `dotnet build` — Everything compiles without errors
+- No circular references — Domain doesn't reference any other project
 
 ---
 
-## Slice 2 — GET Product (ללא Cache)
+## Slice 2 — GET Product (without Cache)
 
-**מה בונים:**
-- `Product.cs` — Entity עם Id, Name, Price, CostPrice, Stock, Version
+**What we build:**
+- `Product.cs` — Entity with Id, Name, Price, CostPrice, Stock, Version
 - `IProductRepository` — GetById, Add, Update
-- `InMemoryProductRepository` — seed של 3 מוצרים
+- `InMemoryProductRepository` — seed of 3 products
 - `ProductDto.cs`
 - `ProductProfile.cs` mapper from Entity to Dto
-- `IProductService` + `ProductService.GetProduct` — קורא ישירות ל-Repo
+- `IProductService` + `ProductService.GetProduct` — calls Repo directly
 - `ProductsController` — GET /api/products/{id}
-- `Program.cs` + DI בסיסי
-- `ApplicationServiceExtensions.cs` - משמש לרישום DI מתוך Application
+- `Program.cs` + basic DI
+- `ApplicationServiceExtensions.cs` - used for DI registration from Application
 
-**החלטות עיצוב:**
+**Design Decisions:**
 
-| נושא | החלטה |
+| Topic | Decision |
 |---|---|
-| Repository Storage | `ConcurrentDictionary` — thread-safe מובנה, מתאים ל-InMemory |
+| Repository Storage | `ConcurrentDictionary` — built-in thread-safe, suitable for InMemory |
 
-**מה אפשר להדגים:**
-- Swagger: GET → 200 OK עם ProductDto
-- GET על ID לא קיים → 404
+**What you can demo:**
+- Swagger: GET → 200 OK with ProductDto
+- GET on non-existing ID → 404
 ---
 
 ## Slice 3 — Cache Layer (Hit / Miss)
 
-**מה בונים:**
+**What we build:**
 - `IProductCache` — Get, Set, Remove
 - `CacheKeys.cs` — `ForProduct(Guid id)`
-- `MemoryProductCache` — עוטף IMemoryCache + Absolute Expiration
+- `MemoryProductCache` — wraps IMemoryCache + Absolute Expiration
 - `ProductService.GetProduct` — Cache → Miss → Repo → Set Cache
 - Logger: `"Cache HIT"` / `"Cache MISS"`
 
-**החלטות עיצוב:**
+**Design Decisions:**
 
-| נושא | החלטה |
+| Topic | Decision |
 |---|---|
 | Cache Implementation | `IMemoryCache` |
-| Cache Abstraction | `IProductCache` — מאפשר החלפה ל-Redis בעתיד ללא שינוי ב-Application |
-| Expiration | Absolute Expiration — זמן חיים קבוע, צפוי |
-| Null Caching | Disabled — לא שומרים `null` בcache |
-| 404 Caching | Disabled — מוצר לא קיים לא נשמר בcache |
-| Future Cache Migration | Redis-ready — מחליפים רק את `MemoryProductCache`, הכל אחר נשאר |
+| Cache Abstraction | `IProductCache` — allows switching to Redis in the future without changes in Application |
+| Expiration | Absolute Expiration — fixed, predictable lifetime |
+| Null Caching | Disabled — we don't store `null` in cache |
+| 404 Caching | Disabled — non-existing products are not stored in cache |
+| Future Cache Migration | Redis-ready — only replace `MemoryProductCache`, everything else stays |
 
-**מה אפשר להדגים:**
-- בקשה 1 → log "Cache MISS" → מגיע מ-Repo
-- בקשה 2 → log "Cache HIT" → מגיע מ-Cache
-- TTL expiry → MISS שוב אחרי פקיעה
+**What you can demo:**
+- Request 1 → log "Cache MISS" → comes from Repo
+- Request 2 → log "Cache HIT" → comes from Cache
+- TTL expiry → MISS again after expiration
 
 ---
 
-## Slice 4 — POST (יצירה + Invalidation)
+## Slice 4 — POST (Create + Invalidation)
 
-**מה בונים:**
+**What we build:**
 - `CreateProductDto.cs`
-- `CreateProductDtoValidator` — FluentValidation (Name לא ריק, Price > 0, Stock >= 0)
-- `ProductService.CreateProduct` — Add ל-Repo → Remove מ-Cache
+- `CreateProductDtoValidator` — FluentValidation (Name not empty, Price > 0, Stock >= 0)
+- `ProductService.CreateProduct` — Add to Repo → Remove from Cache
 - `ProductProfile.cs` — AutoMapper
 - Controller: POST /api/products → 201 Created + Location header
 
-**החלטות עיצוב:**
+**Design Decisions:**
 
-| נושא | החלטה |
+| Topic | Decision |
 |---|---|
-| Validation | FluentValidation — אימות קלטים בגבול המערכת, לא ב-Entity |
-| Mapping | AutoMapper — DTO מגן על חשיפת מידע רגיש מה-Entity |
-| Invalidation | Remove בלבד — לא מאכלסים cache על מוצר שאולי לא יבוקש |
+| Validation | FluentValidation — input validation at the system boundary, not in Entity |
+| Mapping | AutoMapper — DTO protects against exposing sensitive data from the Entity |
+| Invalidation | Remove only — we don't populate cache for a product that may not be requested |
 
-**מה אפשר להדגים:**
-- POST מוצר → 201 Created
-- GET מיד אחריו → 200 (מגיע מ-Repo כי Cache נוקה)
-- POST עם Name ריק → 400 ValidationError
+**What you can demo:**
+- POST product → 201 Created
+- GET immediately after → 200 (comes from Repo because Cache was cleared)
+- POST with empty Name → 400 ValidationError
 
 ---
 
-## Slice 5 — PUT (עדכון + Cache Invalidation)
+## Slice 5 — PUT (Update + Cache Invalidation)
 
-**מה בונים:**
+**What we build:**
 - `UpdateProductDto.cs`
 - `UpdateProductDtoValidator` — FluentValidation
-- `ProductService.UpdateProduct` — Update ב-Repo → `Remove` מ-Cache (לא Set!)
-- Version bump על ה-Entity — פתרון ל-Race Condition של GET+PUT במקביל
+- `ProductService.UpdateProduct` — Update in Repo → `Remove` from Cache (not Set!)
+- Version bump on Entity — solution for Race Condition of concurrent GET+PUT
 - Controller: PUT /api/products/{id} → 200 OK
 
-**החלטות עיצוב:**
+**Design Decisions:**
 
-| נושא | החלטה |
+| Topic | Decision |
 |---|---|
-| Update Strategy | Invalidate ולא Update — לא מבזבזים זיכרון על מוצרים שאולי לא יבוקשו שוב |
-| Race Condition Protection | Versioning — `Set` ב-Cache בודק שה-version מה-Repo ≥ ל-version ב-Cache |
+| Update Strategy | Invalidate instead of Update — don't waste memory on products that may not be requested again |
+| Race Condition Protection | Versioning — `Set` in Cache checks that the version from Repo ≥ the version in Cache |
 
-**מה אפשר להדגים:**
-- PUT מוצר → cache נמחק → GET מיד אחריו → fresh מ-Repo
-- PUT על ID לא קיים → 404
+**What you can demo:**
+- PUT product → cache deleted → GET immediately after → fresh from Repo
+- PUT on non-existing ID → 404
 
 ---
 
 ## Slice 6 — Request Coalescing (SharedTaskStore) 
 
-**מה בונים:**
+**What we build:**
 - `ISharedTaskStore` — GetOrAdd, Remove
 - `SharedTaskStore` — `ConcurrentDictionary<string, Task<ProductDto?>>`
 - `ProductService.GetProduct` — Cache Miss → GetOrAdd:
-  - Task קיים? → await אותו (reuse)
-  - Task לא קיים? → צור חדש → Repo → Set Cache → Remove Task
+  - Task exists? → await it (reuse)
+  - Task doesn't exist? → create new → Repo → Set Cache → Remove Task
 - Logger: `"InFlight CREATED"` / `"InFlight REUSED"` / `"InFlight COMPLETED"`
 
-**החלטות עיצוב:**
+**Design Decisions:**
 
-| נושא | החלטה |
+| Topic | Decision |
 |---|---|
-| Stampede Prevention | `SharedTaskStore` — משתף Task אחד לכל הבקשות במקביל, לא Semaphore שחוסם |
+| Stampede Prevention | `SharedTaskStore` — shares one Task for all concurrent requests, not a Semaphore that blocks |
 
-**מה אפשר להדגים:**
-- 100 concurrent GETs על אותו מוצר → רק **1** קריאה ל-Repo
-- Logs מראים: CREATED אחד + 99 × REUSED
+**What you can demo:**
+- 100 concurrent GETs on the same product → only **1** call to Repo
+- Logs show: 1 CREATED + 99 × REUSED
 
 ---
 
 ## Slice 7 — Error Handling Middleware
 
-**מה בונים:**
-- `ExceptionHandlingMiddleware` — תפיסה מרכזית:
+**What we build:**
+- `ExceptionHandlingMiddleware` — centralized catching:
   - `ProductNotFoundException` → 404 ProblemDetails
-  - `ValidationException` → 400 + שגיאות לפי שדה
-  - `Exception` → 500 (ללא stack trace בתגובה)
+  - `ValidationException` → 400 + errors per field
+  - `Exception` → 500 (no stack trace in response)
 - `ApplicationBuilderExtensions` — `UseExceptionHandling()`
-- `ServiceCollectionExtensions` — DI מלא מסודר
+- `ServiceCollectionExtensions` — full organized DI
 
-**החלטות עיצוב:**
+**Design Decisions:**
 
-| נושא | החלטה |
+| Topic | Decision |
 |---|---|
-| Error Handling | Middleware מרכזי — לא try/catch בכל Controller |
+| Error Handling | Central Middleware — no try/catch in every Controller |
 
-**מה אפשר להדגים:**
-- כל שגיאה מחזירה ProblemDetails מסודר
-- אין חשיפת פרטים פנימיים ב-500
-- DTO מונע חשיפת מידע רגיש מה-Entity
+**What you can demo:**
+- Every error returns a structured ProblemDetails
+- No internal details exposed in 500
+- DTO prevents exposing sensitive data from the Entity
 
-**נושאי אבטחה:**
-> - Cache Key מורכב מ-`product:{id}` — אם היו הרשאות, היינו מוסיפים `userId` למפתח
-> - Cache Poisoning: אנחנו מעדכנים Cache **רק** ממה שחוזר מ-Repository, לא מקלט המשתמש
-> - FluentValidation מאמת קלטים בגבול המערכת
+**Security topics:**
+> - Cache Key is composed of `product:{id}` — if there were permissions, we would add `userId` to the key
+> - Cache Poisoning: we update Cache **only** from what comes back from Repository, not from user input
+> - FluentValidation validates inputs at the system boundary
 
 ---
 
 ## Slice 8 — Tests
 
-**מה בונים:**
+**What we build:**
 
-| קובץ | תרחישים |
+| File | Scenarios |
 |---|---|
 | `CacheTests.cs` | Hit, Miss, TTL expiry, Invalidation after PUT/POST |
-| `ConcurrencyTests.cs` | 100 concurrent → 1 Task נוצר, Task נמחק אחרי השלמה, Race GET+PUT |
+| `ConcurrencyTests.cs` | 100 concurrent → 1 Task created, Task deleted after completion, Race GET+PUT |
 | `ProductServiceTests.cs` | GetProduct (hit/miss), CreateProduct, UpdateProduct, Not Found |
-| `ExceptionHandlingTests.cs` | 404, 400 עם validation errors, 500 |
+| `ExceptionHandlingTests.cs` | 404, 400 with validation errors, 500 |
 
-**מה אפשר להדגים:**
+**What you can demo:**
 - `dotnet test` — all green
-- Mock על `IProductCache` ו-`ISharedTaskStore` (לא על `IMemoryCache` ישירות)
+- Mock on `IProductCache` and `ISharedTaskStore` (not on `IMemoryCache` directly)
 
----
 
-## Bonus — DELETE Cache Endpoint (אופציה C)
-> **רק אם נשאר זמן** — לא חלק מה-core
-
-- `DELETE /api/cache/{id}` — Admin endpoint לניקוי Cache ידני
-- אם היו הרשאות: Key = `userId + productId`
-
----
 
 ## DI Registration (Program.cs)
 
@@ -276,7 +268,7 @@ services.AddFluentValidationAutoValidation();
 
 ---
 
-## מבנה הפרויקט
+## Project Structure
 
 ```
 src/
@@ -315,17 +307,16 @@ src/
 
 ---
 
-## סיכום
+## Summary
 
-| Slice | תוצר |
+| Slice | Output |
 |---|---|
 | 1 | Solution + Projects + References |
-| 2 | GET עובד מקצה לקצה |
-| 3 | Cache Hit/Miss עם logs |
+| 2 | GET working end-to-end |
+| 3 | Cache Hit/Miss with logs |
 | 4 | POST + Validation |
 | 5 | PUT + Invalidation |
 | 6 | Request Coalescing ⭐ |
 | 7 | Error Middleware |
 | 8 | Tests — all green |
 
-> 💡 **אפשר לעצור אחרי Slice 5** — יש API מלא עובד עם Caching. Slices 6-8 מוסיפים את הדברים הכי מתקדמים.
