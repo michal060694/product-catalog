@@ -7,6 +7,7 @@ using ProductCatalog.Application.Services;
 using ProductCatalog.Domain.Cache;
 using ProductCatalog.Domain.Entities;
 using ProductCatalog.Domain.Repositories;
+using ProductCatalog.Domain.TaskStore;
 
 namespace ProductCatalog.Tests.Services;
 
@@ -14,6 +15,7 @@ public class ProductServiceCreateTests
 {
     private readonly IProductRepository _repo;
     private readonly IProductCache _cache;
+    private readonly ISharedTaskStore _taskStore;
     private readonly IMapper _mapper;
     private readonly ProductService _sut;
 
@@ -21,6 +23,7 @@ public class ProductServiceCreateTests
     {
         _repo  = A.Fake<IProductRepository>();
         _cache = A.Fake<IProductCache>();
+        _taskStore = A.Fake<ISharedTaskStore>();
         _mapper = A.Fake<IMapper>();
 
         A.CallTo(() => _mapper.Map<Product>(A<CreateProductDto>._))
@@ -40,7 +43,7 @@ public class ProductServiceCreateTests
                 return new ProductDto(p.Id, p.Name, p.Price, p.Stock);
             });
 
-        _sut = new ProductService(_repo, _cache, _mapper, NullLogger<ProductService>.Instance);
+        _sut = new ProductService(_repo, _cache, _taskStore, _mapper, NullLogger<ProductService>.Instance);
     }
 
     [Fact]
