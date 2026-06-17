@@ -127,6 +127,8 @@
 | 100 concurrent `GET`s for the same uncached product | `SharedTaskStore` ensures exactly one repository call | ✅ Handled |
 | `GET` and `PUT` for the same key run simultaneously | `PUT` removes cache entry; `GET` either hits the old value or re-fetches; Version Guard prevents regression | ✅ Handled |
 | Two concurrent `PUT`s for the same key with different versions | Version Guard in `SetAsync` ensures only the higher version is persisted in cache | ✅ Handled |
+| Cache entry expires; slow in-flight `GET` (V1) races with a `PUT` (V2) | `RemoveAsync` increments the generation counter on expiry-triggered removal too; Thread A's `SetAsync` detects the mismatch and discards V1 — same Generation Guard as the GET/PUT race (§4) | ✅ Handled |
+| Two concurrent `POST`s for the same logical product | `Interlocked.Increment` prevents duplicate IDs; logical duplicates are not prevented — requires an Idempotency Key (§6.2), a business-key Unique Constraint, or an atomic `TryAdd` at the repository layer | ❌ Not implemented |
 
 ---
 

@@ -218,9 +218,9 @@ With SharedTaskStore: 1,000 concurrent GET /api/v1/products/1 → 1 repository h
 
 A `Semaphore` was explicitly rejected: it serializes requests (queue), wastes threads, and requires careful release handling. `Lazy<Task<T>>` is lock-free and naturally shares the same `Task` reference.
 
-### 6. Version Guard in `SetAsync`
+### 6. Generation Guard in `SetAsync`
 
-`MemoryProductCache.SetAsync` checks the existing entry's `Version` before writing. If the cached version is equal to or newer than the incoming one, the write is skipped. This prevents a slow concurrent `GET` from overwriting a newer entry placed by a `PUT`-triggered invalidation + re-read cycle.
+`MemoryProductCache` maintains a `ConcurrentDictionary<string, long>` of generation counters, one per cache key. Every `RemoveAsync` call increments the counter for that key under a per-key lock. Before a `GET` factory calls the repository, it captures the current generation via `GetGenerationAsync`. When the factory later calls `SetAsync`, the guard re-reads the counter under the same lock — if it no longer matches `expectedGeneration`, the write is silently discarded. This prevents a slow in-flight `GET` from poisoning the cache with stale data after a concurrent `PUT` has already invalidated the key.
 
 ### 7. Security
 
@@ -256,6 +256,8 @@ Due to time constraints, only a targeted subset of unit tests was written — en
 | `TocTouTests` | **TOCTOU (Time-Of-Check-To-Time-Of-Use)** — N concurrent cache misses race to the repository; `SharedTaskStore` ensures the repo is called exactly once and the cache is written exactly once |
 
 All tests follow the `Given_When_Then` naming convention. Dependencies are mocked with FakeItEasy where needed; scenario tests use real infrastructure implementations to demonstrate actual behavior.
+
+> **Race condition coverage:** the four `StaleDataExamples` suites above demonstrate the most testable scenarios directly in code. A full catalogue of all seven concurrency and stale-data scenarios — including two without dedicated tests (Cache Expired + Concurrent Update, POST/POST Race) — is documented with solutions and implementation status in the [Race Condition Analysis table in DECISIONS.md](./DECISIONS.md#2-race-condition-analysis).
 
 ---
 
