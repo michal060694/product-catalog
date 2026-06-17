@@ -211,6 +211,10 @@ If a product is not found in the repository, `null` is returned and nothing is w
 
 ### 5. Cache Stampede Prevention — `SharedTaskStore`
 
+> **Note — .NET 9 required:** `SharedTaskStore` uses `TryRemove(KeyValuePair<K,V>)` to evict only the specific `Lazy` instance that triggered the timeout, not any newer entry for the same key. This overload requires C# 13 (shipped with .NET 9); on .NET 8 (C# 12) the forward reference to `lazy` inside its own initializer is illegal (`CS0841`). Downgrading to .NET 8 therefore requires weakening this guarantee.
+
+
+
 `SharedTaskStore` uses `ConcurrentDictionary<string, Lazy<Task<Product?>>>` to coalesce concurrent in-flight requests for the same key into **one** repository call.
 
 ```
