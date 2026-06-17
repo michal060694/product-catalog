@@ -240,31 +240,18 @@ dotnet add ProductCatalog.Tests package Microsoft.AspNetCore.Mvc.Testing
 
 | File | Scenarios |
 |---|---|
-| `CacheTests.cs` | Hit, Miss, TTL expiry, Invalidation after PUT/POST |
-| `ConcurrencyTests.cs` | 100 concurrent → 1 Task created, Task deleted after completion, Race GET+PUT |
-| `ProductServiceTests.cs` | GetProduct (hit/miss), CreateProduct, UpdateProduct, Not Found |
-| `ExceptionHandlingTests.cs` | 404, 400 with validation errors, 500 |
+| `Services/ProductServiceGetTests.cs` | Cache HIT → repo not called; Cache MISS + product exists → repo called, cache set; Cache MISS + not found → `ProductNotFoundException` |
+| `Services/ProductServiceCreateTests.cs` | `Repo.Add` called once; `Cache.RemoveAsync` called with correct key; returns mapped `ProductDto` |
+| `Services/ProductServiceUpdateTests.cs` | Not found → `ProductNotFoundException`; found → Version incremented, `Repo.Update` called, cache invalidated; returns updated `ProductDto` |
+| `StaleDataExamples/CoalescingTests.cs` | 10 concurrent requests for the same uncached key → factory called exactly once (Cache Stampede demo) |
+| `StaleDataExamples/StaleCacheWriteTests.cs` | Slow GET returns after PUT invalidation → generation guard rejects stale write |
+| `StaleDataExamples/ConcurrentDictionaryTests.cs` | 3 threads Add/Read/Update concurrently → no exceptions, seed data intact |
+| `StaleDataExamples/TocTouTests.cs` | N concurrent cache misses → exactly 1 repo call and 1 cache write (TOCTOU demo) |
 
 **What you can demo:**
 - `dotnet test` — all green
-- Mock on `IProductCache` and `ISharedTaskStore` (not on `IMemoryCache` directly)
-
-
-
-## DI Registration (Program.cs)
-
-```csharp
-// Singleton — shared state
-services.AddSingleton<IProductRepository, InMemoryProductRepository>();
-services.AddSingleton<IProductCache, MemoryProductCache>();
-services.AddSingleton<ISharedTaskStore, SharedTaskStore>();
-services.AddMemoryCache();
-
-// Scoped
-services.AddScoped<IProductService, ProductService>();
-services.AddAutoMapper(typeof(ProductProfile));
-services.AddFluentValidationAutoValidation();
-```
+- `StaleDataExamples/` — each test documents the *problem* in its scenario comment and proves the *solution* in the assertion
+- Mocks on `IProductCache`, `ISharedTaskStore`, and `IProductRepository` (FakeItEasy) — never on `IMemoryCache` directly
 
 ---
 
@@ -299,10 +286,15 @@ src/
 │   ├── Cache/CacheKeys.cs
 │   └── Concurrency/SharedTaskStore.cs
 └── ProductCatalog.Tests
-    ├── ProductServiceTests.cs
-    ├── CacheTests.cs
-    ├── ConcurrencyTests.cs
-    └── ExceptionHandlingTests.cs
+    ├── Services/
+    │   ├── ProductServiceGetTests.cs
+    │   ├── ProductServiceCreateTests.cs
+    │   └── ProductServiceUpdateTests.cs
+    └── StaleDataExamples/
+        ├── CoalescingTests.cs
+        ├── StaleCacheWriteTests.cs
+        ├── ConcurrentDictionaryTests.cs
+        └── TocTouTests.cs
 ```
 
 ---
@@ -316,7 +308,7 @@ src/
 | 3 | Cache Hit/Miss with logs |
 | 4 | POST + Validation |
 | 5 | PUT + Invalidation |
-| 6 | Request Coalescing ⭐ |
+| 6 | Request Coalescing |
 | 7 | Error Middleware |
 | 8 | Tests — all green |
 
