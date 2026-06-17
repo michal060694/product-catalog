@@ -41,7 +41,7 @@ public class SharedTaskStore : ISharedTaskStore
                 TaskScheduler.Default);
 
             _ = Task.Delay(_timeout).ContinueWith(
-                t => _inFlight.TryRemove(key, out _),
+                t => _inFlight.TryRemove(new KeyValuePair<string, Lazy<Task<Product?>>>(key, lazy)),
                 CancellationToken.None,
                 TaskContinuationOptions.None,
                 TaskScheduler.Default);
