@@ -249,13 +249,13 @@ IProductCache.GetAsync(key)
 ### Logging
 Structured logging with context. Required log tokens:
 ```
-"Cache HIT for key {Key}"
-"Cache MISS for key {Key}"
-"InFlight CREATED for key {Key}"
-"InFlight REUSED for key {Key}"
-"InFlight COMPLETED for key {Key}"
-"Created product with Id {Id}"
-"Cache INVALIDATED for key {Key} after update"
+"Cache HIT for Product ID: {ProductId}."
+"Cache MISS for Product ID: {ProductId}. Fetching from repository."
+"InFlight CREATED for cache key {CacheKey}."
+"InFlight REUSED for cache key {CacheKey}."
+"InFlight COMPLETED for cache key {CacheKey}."
+"Product created with ID: {ProductId}."
+"Cache INVALIDATED for Product ID: {ProductId} after update."
 ```
 Never log PII, cost prices (CostPrice), or secrets.
 

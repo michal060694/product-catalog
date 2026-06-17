@@ -21,20 +21,20 @@ public class SharedTaskStore : ISharedTaskStore
     {
         if (_inFlight.TryGetValue(key, out var existing))
         {
-            _logger.LogInformation("InFlight REUSED for key {Key}", key);
+            _logger.LogInformation("InFlight REUSED for cache key {CacheKey}.", key);
             return existing.Value;
         }
 
         var lazy = _inFlight.GetOrAdd(key, k => new Lazy<Task<Product?>>(() =>
         {
-            _logger.LogInformation("InFlight CREATED for key {Key}", key);
+            _logger.LogInformation("InFlight CREATED for cache key {CacheKey}.", key);
             var task = factory();
 
             _ = task.ContinueWith(
                 t =>
                 {
                     _inFlight.TryRemove(key, out _);
-                    _logger.LogInformation("InFlight COMPLETED for key {Key}", key);
+                    _logger.LogInformation("InFlight COMPLETED for cache key {CacheKey}.", key);
                 },
                 CancellationToken.None,
                 TaskContinuationOptions.None,

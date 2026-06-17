@@ -138,9 +138,9 @@ GET /api/v1/products/1
 ```
 
 ```
-[INFO] Cache MISS for key product:1
-[INFO] InFlight CREATED for key product:1
-[INFO] InFlight COMPLETED for key product:1
+[INFO] Cache MISS for Product ID: 1. Fetching from repository.
+[INFO] InFlight CREATED for cache key product:1.
+[INFO] InFlight COMPLETED for cache key product:1.
 → 200 OK  (fetched from repository, stored in cache)
 ```
 
@@ -151,7 +151,7 @@ GET /api/v1/products/1
 ```
 
 ```
-[INFO] Cache HIT for key product:1
+[INFO] Cache HIT for Product ID: 1.
 → 200 OK  (served from cache — repository never called)
 ```
 
@@ -162,7 +162,7 @@ PUT /api/v1/products/1
 ```
 
 ```
-[INFO] Cache INVALIDATED for key product:1 after update
+[INFO] Cache INVALIDATED for Product ID: 1 after update.
 → 200 OK
 ```
 
@@ -173,9 +173,9 @@ GET /api/v1/products/1
 ```
 
 ```
-[INFO] Cache MISS for key product:1
-[INFO] InFlight CREATED for key product:1
-[INFO] InFlight COMPLETED for key product:1
+[INFO] Cache MISS for Product ID: 1. Fetching from repository.
+[INFO] InFlight CREATED for cache key product:1.
+[INFO] InFlight COMPLETED for cache key product:1.
 → 200 OK  (fetched from repository, re-cached)
 ```
 

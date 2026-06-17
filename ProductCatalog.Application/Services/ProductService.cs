@@ -29,11 +29,11 @@ public class ProductService : IProductService
         var cached = await _cache.GetAsync(key, ct);
         if (cached is not null)
         {
-            _logger.LogInformation("Cache HIT for key {Key}", key);
+            _logger.LogInformation("Cache HIT for Product ID: {ProductId}.", id);
             return _mapper.Map<ProductDto>(cached);
         }
 
-        _logger.LogInformation("Cache MISS for key {Key}", key);
+        _logger.LogInformation("Cache MISS for Product ID: {ProductId}. Fetching from repository.", id);
 
         var product = await _taskStore.GetOrAddAsync(key, async () =>
         {
@@ -59,7 +59,7 @@ public class ProductService : IProductService
         var key = CacheKeys.ForProduct(product.Id);
         await _cache.RemoveAsync(key, ct);
 
-        _logger.LogInformation("Created product with Id {Id}", product.Id);
+        _logger.LogInformation("Product created with ID: {ProductId}.", product.Id);
 
         return _mapper.Map<ProductDto>(product);
     }
@@ -75,7 +75,7 @@ public class ProductService : IProductService
 
         var key = CacheKeys.ForProduct(id);
         await _cache.RemoveAsync(key, ct);
-        _logger.LogInformation("Cache INVALIDATED for key {Key} after update", key);
+        _logger.LogInformation("Cache INVALIDATED for Product ID: {ProductId} after update.", id);
 
         return _mapper.Map<ProductDto>(existing);
     }
