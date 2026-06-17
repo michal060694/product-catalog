@@ -26,6 +26,7 @@
 | 16 | Docker (future) | `Dockerfile` + `docker-compose.yml` with Redis container | [5.6](#56-docker--containerization) |
 | 17 | Test Coverage (future) | Full unit + integration tests with `WebApplicationFactory` | [5.7](#57-broader-test-coverage) |
 | 18 | Value Objects (future) | `ProductId`, `Money`, `StockQuantity` — invariants live in the type | [5.8](#58-value-objects-for-domain-primitives) |
+| 19 | Generation Dictionary Lifecycle (future) | Cleanup on DELETE + global store in distributed cache | [5.9](#59-generation-dictionary-lifecycle) |
 
 ---
 
@@ -226,6 +227,21 @@
 **Need it addresses:** `Price`, `Stock`, and `Id` currently travel as raw primitives — a caller can write `new Product { Price = -50m }` and the compiler says nothing. Business rules are scattered across validators instead of living in the type.
 - Pros: Invalid state cannot be constructed; compile-time prevents passing a `productName` where an `id` is expected; single source of truth for each invariant
 - Cons: AutoMapper 16.x requires non-trivial configuration to map Value Objects into positional `record` DTOs — `ConvertUsing` type maps interact with constructor resolution in non-obvious ways
+
+---
+
+### 5.9 Generation Dictionary Lifecycle
+
+**What:** Two improvements to the `_generations` dictionary maintained in `MemoryProductCache`:
+
+1. **Cleanup on DELETE** — When a `DELETE /api/v1/products/{id}` endpoint is added, `RemoveAsync` should also call `_generations.TryRemove(key, out _)` after evicting the cache entry. Today the generation counter for a deleted product stays in the dictionary indefinitely. With cleanup on DELETE the dictionary size stays exactly in sync with the number of live products in the repository — no unbounded growth.
+
+2. **Global store in distributed cache** — When migrating to Redis, the `_generations` dictionary must move to a shared store rather than remaining a local `ConcurrentDictionary`. In a multi-instance deployment each node holds its own private counter, so a `PUT` on instance A increments only that node's generation, while instance B's in-flight `GET` compares against its own stale counter and wrongly accepts a stale write. Storing generations in Redis gives all instances a single source of truth.
+
+> **Note:** the per-key `lock` already used in `SetAsync` and `RemoveAsync` ensures that no two threads can read-modify-write the generation counter at the same time — so duplicate increments and lost updates are already prevented for the in-process case. This same mutual-exclusion guarantee must be preserved (e.g., via Redis `WATCH`/transaction or a distributed lock) when moving to a shared store.
+
+- Pros: Dictionary stays bounded; invalidation semantics are correct across all instances in a distributed deployment
+- Cons: Redis-based generation management adds latency per cache write (one round-trip for the generation check); distributed locking increases implementation complexity
 
 ---
 
