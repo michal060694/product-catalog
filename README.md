@@ -238,20 +238,40 @@ A `Semaphore` was explicitly rejected: it serializes requests (queue), wastes th
 dotnet test
 ```
 
+Due to time constraints, only a targeted subset of unit tests was written — enough to demonstrate the testing approach and validate the core mechanics.
+
+#### `Services/` — Unit tests for the application service layer
+
 | Suite | Covers |
 |---|---|
-| `ProductServiceCacheTests` | Cache hit / miss / not-found, null not cached |
-| `MemoryProductCacheVersionGuardTests` | Version guard logic, TTL expiry |
-| `ProductServiceCoalescingTests` | SharedTaskStore delegation, cache-hit bypasses store |
-| `ProductServiceCreateTests` | POST flow, invalidation |
-| `ProductServiceUpdateTests` | PUT flow, invalidation, not-found |
-| `ConcurrencyTests` | Concurrent GET coalesces to one repo call |
-| `ExceptionHandlingMiddlewareTests` | ProblemDetails shape for 404 / 400 / 500 |
+| `ProductServiceGetTests` | Cache hit returns DTO without calling repo; cache miss calls repo and populates cache; missing product throws `ProductNotFoundException` |
+| `ProductServiceCreateTests` | `Add` is called on repo exactly once; cache key is invalidated after creation; returned DTO contains correct mapped fields |
+| `ProductServiceUpdateTests` | Missing product throws `ProductNotFoundException`; found product increments version, calls `Update`, and invalidates cache; returned DTO reflects updated fields |
 
-All tests follow the `Given_When_Then` naming convention. Dependencies are mocked with FakeItEasy; no real HTTP stack is involved.
+#### `StaleDataExamples/` — Scenario tests demonstrating concurrency problems and their solutions
+
+| Suite | Scenario demonstrated |
+|---|---|
+| `CoalescingTests` | **Cache stampede** — 10 concurrent requests for the same uncached key; `SharedTaskStore` coalesces them into a single factory call |
+| `StaleCacheWriteTests` | **Stale write after invalidation** — Thread A's GET is in-flight when Thread B's PUT invalidates the cache; the generation guard rejects Thread A's stale write |
+| `ConcurrentDictionaryTests` | **Concurrent repository access** — simultaneous Add / Read / Update operations produce no exceptions and preserve data integrity |
+| `TocTouTests` | **TOCTOU (Time-Of-Check-To-Time-Of-Use)** — N concurrent cache misses race to the repository; `SharedTaskStore` ensures the repo is called exactly once and the cache is written exactly once |
+
+All tests follow the `Given_When_Then` naming convention. Dependencies are mocked with FakeItEasy where needed; scenario tests use real infrastructure implementations to demonstrate actual behavior.
 
 ---
 
 ## AI Usage
 
-AI tools (Claude) were used throughout this project as an engineering assistant — for architecture discussions, trade-off analysis, and code review. All design decisions were challenged, justified, and validated before implementation. The full interaction log is preserved in `DECISIONS.md`.
+Throughout this project, various AI tools were utilized as engineering assistants, with ultimate architectural ownership and decision-making remaining entirely mine.
+
+The development workflow followed a structured, multi-LLM strategy:
+
+**Architecture & Planning:** Initial design concepts were brainstormed with GPT. To resolve complex edge cases and architectural disagreements, Gemini was used for cross-verification. I made the final calls on all design decisions.
+
+**Task Breakdown & Implementation:** Once the architecture was finalized, Claude was leveraged to break down the scope into an Agile methodology, ensuring each slice yielded a testable, independent deliverable for QA. The core implementation of each task was then co-authored with Claude.
+
+**Scenario Building:** The scenario/workflow orchestration was developed almost entirely by me, as Claude struggled to model these interactions without introducing over-engineering and clutter.
+
+A complete log of the interaction history and trade-off analysis is maintained in `DECISIONS.md`.
+
