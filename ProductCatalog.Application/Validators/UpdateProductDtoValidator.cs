@@ -1,7 +1,6 @@
 using FluentValidation;
-using ProductCatalog.Application.DTOs;
 
-namespace ProductCatalog.Application.Validators;
+namespace ProductCatalog.Application;
 
 public class UpdateProductDtoValidator : AbstractValidator<UpdateProductDto>
 {

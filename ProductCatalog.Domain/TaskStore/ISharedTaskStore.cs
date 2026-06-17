@@ -1,6 +1,4 @@
-using ProductCatalog.Domain.Entities;
-
-namespace ProductCatalog.Domain.TaskStore;
+namespace ProductCatalog.Domain;
 
 public interface ISharedTaskStore
 {

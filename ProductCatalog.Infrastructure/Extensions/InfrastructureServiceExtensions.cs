@@ -1,12 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using ProductCatalog.Domain.Repositories;
-using ProductCatalog.Domain.TaskStore;
-using ProductCatalog.Infrastructure.Cache;
-using ProductCatalog.Infrastructure.Repositories;
-using ProductCatalog.Infrastructure.TaskStore;
+using ProductCatalog.Domain;
 
-namespace ProductCatalog.Infrastructure.Extensions;
+namespace ProductCatalog.Infrastructure;
 
 public static class InfrastructureServiceExtensions
 {

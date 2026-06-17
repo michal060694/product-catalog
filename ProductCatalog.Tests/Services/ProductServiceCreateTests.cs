@@ -3,15 +3,10 @@ using FakeItEasy;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using ProductCatalog.Application.DTOs;
-using ProductCatalog.Application.Mappings;
-using ProductCatalog.Application.Services;
-using ProductCatalog.Domain.Cache;
-using ProductCatalog.Domain.Entities;
-using ProductCatalog.Domain.Repositories;
-using ProductCatalog.Domain.TaskStore;
+using ProductCatalog.Application;
+using ProductCatalog.Domain;
 
-namespace ProductCatalog.Tests.Services;
+namespace ProductCatalog.Tests;
 
 public class ProductServiceCreateTests
 {

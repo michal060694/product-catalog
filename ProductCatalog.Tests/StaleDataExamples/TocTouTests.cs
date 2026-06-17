@@ -5,16 +5,11 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using ProductCatalog.Application.DTOs;
-using ProductCatalog.Application.Mappings;
-using ProductCatalog.Application.Services;
-using ProductCatalog.Domain.Cache;
-using ProductCatalog.Domain.Entities;
-using ProductCatalog.Domain.Repositories;
-using ProductCatalog.Infrastructure.Cache;
-using ProductCatalog.Infrastructure.TaskStore;
+using ProductCatalog.Application;
+using ProductCatalog.Domain;
+using ProductCatalog.Infrastructure;
 
-namespace ProductCatalog.Tests.StaleDataExamples;
+namespace ProductCatalog.Tests;
 
 public class TocTouTests
 {

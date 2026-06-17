@@ -1,8 +1,8 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
-using ProductCatalog.Domain.Exceptions;
+using ProductCatalog.Domain;
 
-namespace ProductCatalog.Api.Middleware;
+namespace ProductCatalog.Api;
 
 public class ExceptionHandlingMiddleware
 {

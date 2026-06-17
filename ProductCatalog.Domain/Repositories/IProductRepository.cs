@@ -1,6 +1,4 @@
-using ProductCatalog.Domain.Entities;
-
-namespace ProductCatalog.Domain.Repositories;
+namespace ProductCatalog.Domain;
 
 public interface IProductRepository
 {

@@ -1,8 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
-using ProductCatalog.Application.DTOs;
-using ProductCatalog.Application.Services;
+using ProductCatalog.Application;
 
-namespace ProductCatalog.Api.Controllers;
+namespace ProductCatalog.Api;
 
 [ApiController]
 [Route("api/products")]

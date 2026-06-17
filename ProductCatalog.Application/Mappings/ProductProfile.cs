@@ -1,8 +1,7 @@
 using AutoMapper;
-using ProductCatalog.Application.DTOs;
-using ProductCatalog.Domain.Entities;
+using ProductCatalog.Domain;
 
-namespace ProductCatalog.Application.Mappings;
+namespace ProductCatalog.Application;
 
 public class ProductProfile : Profile
 {

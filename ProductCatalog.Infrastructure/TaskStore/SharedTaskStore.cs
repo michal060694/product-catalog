@@ -1,11 +1,9 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ProductCatalog.Domain.Entities;
-using ProductCatalog.Domain.TaskStore;
-using ProductCatalog.Infrastructure.Cache;
+using ProductCatalog.Domain;
 
-namespace ProductCatalog.Infrastructure.TaskStore;
+namespace ProductCatalog.Infrastructure;
 
 public class SharedTaskStore : ISharedTaskStore
 {

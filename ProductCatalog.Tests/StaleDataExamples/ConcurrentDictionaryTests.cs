@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
 using FluentAssertions;
-using ProductCatalog.Domain.Entities;
-using ProductCatalog.Infrastructure.Repositories;
+using ProductCatalog.Domain;
+using ProductCatalog.Infrastructure;
 
-namespace ProductCatalog.Tests.StaleDataExamples;
+namespace ProductCatalog.Tests;
 
 public class ConcurrentDictionaryTests
 {

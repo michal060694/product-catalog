@@ -1,6 +1,4 @@
-using ProductCatalog.Application.DTOs;
-
-namespace ProductCatalog.Application.Services;
+namespace ProductCatalog.Application;
 
 public interface IProductService
 {

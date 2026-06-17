@@ -1,4 +1,4 @@
-namespace ProductCatalog.Domain.Exceptions;
+namespace ProductCatalog.Domain;
 
 public class ProductNotFoundException : Exception
 {

@@ -1,7 +1,7 @@
 using FluentValidation.AspNetCore;
-using ProductCatalog.Api.Extensions;
-using ProductCatalog.Application.Extensions;
-using ProductCatalog.Infrastructure.Extensions;
+using ProductCatalog.Api;
+using ProductCatalog.Application;
+using ProductCatalog.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 

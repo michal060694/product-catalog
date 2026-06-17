@@ -1,4 +1,4 @@
-namespace ProductCatalog.Domain.Cache;
+namespace ProductCatalog.Domain;
 
 public static class CacheKeys
 {

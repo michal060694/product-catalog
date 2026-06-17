@@ -2,10 +2,10 @@ using FluentAssertions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using ProductCatalog.Domain.Entities;
-using ProductCatalog.Infrastructure.Cache;
+using ProductCatalog.Domain;
+using ProductCatalog.Infrastructure;
 
-namespace ProductCatalog.Tests.StaleDataExamples;
+namespace ProductCatalog.Tests;
 
 public class StaleCacheWriteTests
 {

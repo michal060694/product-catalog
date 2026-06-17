@@ -1,4 +1,4 @@
-namespace ProductCatalog.Infrastructure.Cache;
+namespace ProductCatalog.Infrastructure;
 
 public class CacheSettings
 {

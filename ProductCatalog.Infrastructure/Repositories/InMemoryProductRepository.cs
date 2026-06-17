@@ -1,8 +1,7 @@
 using System.Collections.Concurrent;
-using ProductCatalog.Domain.Entities;
-using ProductCatalog.Domain.Repositories;
+using ProductCatalog.Domain;
 
-namespace ProductCatalog.Infrastructure.Repositories;
+namespace ProductCatalog.Infrastructure;
 
 public class InMemoryProductRepository : IProductRepository
 {

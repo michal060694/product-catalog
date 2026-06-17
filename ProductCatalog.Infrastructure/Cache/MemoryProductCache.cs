@@ -2,10 +2,9 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ProductCatalog.Domain.Entities;
-using ProductCatalog.Domain.Repositories;
+using ProductCatalog.Domain;
 
-namespace ProductCatalog.Infrastructure.Cache;
+namespace ProductCatalog.Infrastructure;
 
 public class MemoryProductCache : IProductCache
 {

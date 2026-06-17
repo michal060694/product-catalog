@@ -1,13 +1,8 @@
 using AutoMapper;
 using Microsoft.Extensions.Logging;
-using ProductCatalog.Application.DTOs;
-using ProductCatalog.Domain.Cache;
-using ProductCatalog.Domain.Entities;
-using ProductCatalog.Domain.Exceptions;
-using ProductCatalog.Domain.Repositories;
-using ProductCatalog.Domain.TaskStore;
+using ProductCatalog.Domain;
 
-namespace ProductCatalog.Application.Services;
+namespace ProductCatalog.Application;
 
 public class ProductService : IProductService
 {

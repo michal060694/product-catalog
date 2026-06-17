@@ -1,6 +1,4 @@
-using ProductCatalog.Api.Middleware;
-
-namespace ProductCatalog.Api.Extensions;
+namespace ProductCatalog.Api;
 
 public static class ApplicationBuilderExtensions
 {

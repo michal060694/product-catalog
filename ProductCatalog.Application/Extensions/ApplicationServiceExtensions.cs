@@ -1,11 +1,8 @@
 using AutoMapper;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
-using ProductCatalog.Application.Mappings;
-using ProductCatalog.Application.Services;
-using ProductCatalog.Application.Validators;
 
-namespace ProductCatalog.Application.Extensions;
+namespace ProductCatalog.Application;
 
 public static class ApplicationServiceExtensions
 {
