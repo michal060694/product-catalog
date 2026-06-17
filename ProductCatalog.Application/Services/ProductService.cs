@@ -71,7 +71,6 @@ public class ProductService : IProductService
             throw new ProductNotFoundException(id);
 
         _mapper.Map(dto, existing);
-        existing.Version++;
         _repo.Update(existing);
 
         var key = CacheKeys.ForProduct(id);

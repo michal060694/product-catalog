@@ -34,7 +34,7 @@ public class StaleCacheWriteTests
         //             Before Cache.Set(), verify that no update
         //             occurred while the GET was in progress.
         var key   = "product:1";
-        var staleV1 = new Product { Id = 1, Name = "Old Name", Price = 100m, Version = 1 };
+        var staleV1 = new Product { Id = 1, Name = "Old Name", Price = 100m };
 
         // Thread A: captures generation before going to the repository
         var gen = await _sut.GetGenerationAsync(key); // gen = 0

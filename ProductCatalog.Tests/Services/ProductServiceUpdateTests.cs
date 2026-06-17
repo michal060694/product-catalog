@@ -42,10 +42,10 @@ public class ProductServiceUpdateTests
     }
 
     [Fact]
-    public async Task UpdateProductAsync_WhenProductFound_IncrementsVersion_CallsRepoUpdate_AndInvalidatesCache()
+    public async Task UpdateProductAsync_WhenProductFound_CallsRepoUpdate_AndInvalidatesCache()
     {
         // Arrange
-        var existing = new Product { Id = 1, Name = "Old", Price = 5m, Stock = 3, Version = 2 };
+        var existing = new Product { Id = 1, Name = "Old", Price = 5m, Stock = 3 };
         A.CallTo(() => _repo.GetById(1)).Returns(existing);
         var dto = new UpdateProductDto("New", 10m, 7);
 
@@ -53,7 +53,6 @@ public class ProductServiceUpdateTests
         await _sut.UpdateProductAsync(1, dto);
 
         // Assert
-        existing.Version.Should().Be(3, "service must increment version before persisting");
         A.CallTo(() => _repo.Update(existing)).MustHaveHappenedOnceExactly();
         A.CallTo(() => _cache.RemoveAsync(CacheKeys.ForProduct(1), A<CancellationToken>._))
             .MustHaveHappenedOnceExactly();
@@ -63,7 +62,7 @@ public class ProductServiceUpdateTests
     public async Task UpdateProductAsync_WhenProductFound_ReturnsDtoWithUpdatedFields()
     {
         // Arrange
-        var existing = new Product { Id = 1, Name = "OldName", Price = 5m, Stock = 3, Version = 1 };
+        var existing = new Product { Id = 1, Name = "OldName", Price = 5m, Stock = 3 };
         A.CallTo(() => _repo.GetById(1)).Returns(existing);
         var dto = new UpdateProductDto("NewName", 20m, 50);
 

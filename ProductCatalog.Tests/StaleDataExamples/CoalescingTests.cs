@@ -29,7 +29,7 @@ public class CoalescingTests
         //             existing Lazy and awaits its already-running Task.
         const string key = "product:1";
         const int threads = 10;
-        var product = new Product { Id = 1, Name = "Product 1", Price = 10m, Version = 1 };
+        var product = new Product { Id = 1, Name = "Product 1", Price = 10m };
         var callCount = 0;
         var tcs = new TaskCompletionSource<Product?>();
 

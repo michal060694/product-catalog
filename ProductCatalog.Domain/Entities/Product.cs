@@ -7,5 +7,4 @@ public class Product
     public decimal Price { get; set; }
     public decimal CostPrice { get; set; }   // מחיר עלות — סודי, לא יוצא לDTO/Cache
     public int Stock { get; set; }
-    public int Version { get; set; }
 }

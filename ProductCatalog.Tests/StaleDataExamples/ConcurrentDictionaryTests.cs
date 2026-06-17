@@ -36,7 +36,7 @@ public class ConcurrentDictionaryTests
             {
                 try
                 {
-                    repo.Add(new Product { Name = $"New {i}", Price = 10m, Stock = i, Version = 1 });
+                    repo.Add(new Product { Name = $"New {i}", Price = 10m, Stock = i });
                     Task.Delay(i * 10000);
                 }
                 catch (Exception ex) { exceptions.Add(ex); }

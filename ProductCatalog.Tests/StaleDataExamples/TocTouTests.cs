@@ -63,7 +63,7 @@ public class TocTouTests
             {
                 Interlocked.Increment(ref repoCallCount);
                 gate.Wait(); // blocks exactly one thread pool thread inside the Lazy factory
-                return new Product { Id = productId, Name = "Product 1", Price = 10m, Stock = 5, Version = 1 };
+                return new Product { Id = productId, Name = "Product 1", Price = 10m, Stock = 5 };
             });
 
         var sut = new ProductService(repo, _cache, _taskStore, _mapper, NullLogger<ProductService>.Instance);
@@ -91,10 +91,9 @@ public class TocTouTests
             "SharedTaskStore coalesces all concurrent cache misses into a single factory call — " +
             "the per-key lock prevents TOCTOU (duplicate repository calls and duplicate cache writes)");
 
-        // Cache must contain exactly one entry with the correct version
+        // Cache must contain exactly one entry
         var cached = await _cache.GetAsync(key);
-        cached.Should().NotBeNull();
-        cached!.Version.Should().Be(1, "the product must be written to cache exactly once");
+        cached.Should().NotBeNull("the product must be written to cache exactly once");
 
         // All threads must have received the same result
         results.Should().AllSatisfy(r => r.Name.Should().Be("Product 1",

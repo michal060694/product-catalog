@@ -44,10 +44,6 @@ public class MemoryProductCache : IProductCache
             if (_generations.GetValueOrDefault(key, 0L) != expectedGeneration)
                 return Task.CompletedTask;
 
-            var existing = _cache.Get<Product>(key);
-            if (existing is not null && existing.Version >= product.Version)
-                return Task.CompletedTask;
-
             var options = new MemoryCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_settings.Value.ProductTtlMinutes)
