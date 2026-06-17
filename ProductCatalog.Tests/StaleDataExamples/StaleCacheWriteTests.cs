@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 using ProductCatalog.Domain.Entities;
 using ProductCatalog.Infrastructure.Cache;
 
-namespace ProductCatalog.Tests.Cache;
+namespace ProductCatalog.Tests.StaleDataExamples;
 
 public class StaleCacheWriteTests
 {

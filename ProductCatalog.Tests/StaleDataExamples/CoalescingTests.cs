@@ -5,7 +5,7 @@ using ProductCatalog.Domain.Entities;
 using ProductCatalog.Infrastructure.Cache;
 using ProductCatalog.Infrastructure.TaskStore;
 
-namespace ProductCatalog.Tests.TaskStore;
+namespace ProductCatalog.Tests.StaleDataExamples;
 
 public class CoalescingTests
 {
