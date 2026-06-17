@@ -131,6 +131,8 @@ GET /api/v1/products/99   → 404 Not Found
 
 ## Cache Hit / Miss — End-to-End Flow
 
+![Happy Flow Diagram](Images/HappyFlowDiagram.svg)
+
 ### Step 1 — First GET (Cache Miss)
 
 ```http

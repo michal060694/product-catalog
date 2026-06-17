@@ -1,4 +1,4 @@
-using AutoMapper;
+    using AutoMapper;
 using Microsoft.Extensions.Logging;
 using ProductCatalog.Domain;
 
