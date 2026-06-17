@@ -40,14 +40,14 @@ ProductCatalog.Tests           Unit tests — xUnit + FakeItEasy
 
 ```bash
 git clone https://github.com/michal060694/product-catalog
-cd "Caching Strategy & Consistency/Project"
+cd "ProductCatalog"
 
 dotnet restore
 dotnet build
 dotnet run --project ProductCatalog.Api
 ```
 
-Swagger UI is available at `https://localhost:7119/swagger` when running in Development mode.
+Swagger UI is available at `http://localhost:5115/swagger` when running in Development mode.
 
 ---
 
@@ -196,8 +196,8 @@ GET /api/products/1
 | | Absolute | Sliding |
 |---|---|---|
 | Staleness bound | Guaranteed | Unbounded for hot items |
-| Predictability | High | Low |
 | Troubleshooting | Easy | Hard |
+| Safety Net | Forces refresh after TTL even if invalidation fails | Hot items may remain stale indefinitely if invalidation fails |
 
 A product catalog is read-heavy but not latency-critical on expiry. Absolute expiration ensures no entry lives beyond its TTL regardless of traffic, preventing silent long-lived stale reads.
 
