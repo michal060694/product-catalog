@@ -50,18 +50,15 @@ public class ProductService : IProductService
         return _mapper.Map<ProductDto>(product);
     }
 
-    public async Task<ProductDto> CreateProductAsync(CreateProductDto dto, CancellationToken ct = default)
+    public Task<ProductDto> CreateProductAsync(CreateProductDto dto, CancellationToken ct = default)
     {
         var product = _mapper.Map<Product>(dto);
 
         _repo.Add(product);
 
-        var key = CacheKeys.ForProduct(product.Id);
-        await _cache.RemoveAsync(key, ct);
-
         _logger.LogInformation("Product created with ID: {ProductId}.", product.Id);
 
-        return _mapper.Map<ProductDto>(product);
+        return Task.FromResult(_mapper.Map<ProductDto>(product));
     }
 
     public async Task<ProductDto> UpdateProductAsync(int id, UpdateProductDto dto, CancellationToken ct = default)

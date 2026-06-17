@@ -41,22 +41,6 @@ public class ProductServiceCreateTests
     }
 
     [Fact]
-    public async Task CreateProductAsync_Always_RemovesProductKeyFromCache()
-    {
-        // Arrange
-        var dto = new CreateProductDto("Widget", 9.99m, 100);
-        A.CallTo(() => _repo.Add(A<Product>._))
-            .Invokes(call => call.Arguments.Get<Product>(0)!.Id = 42);
-
-        // Act
-        await _sut.CreateProductAsync(dto);
-
-        // Assert
-        A.CallTo(() => _cache.RemoveAsync(CacheKeys.ForProduct(42), A<CancellationToken>._))
-            .MustHaveHappenedOnceExactly();
-    }
-
-    [Fact]
     public async Task CreateProductAsync_Always_ReturnsMappedDtoWithCorrectData()
     {
         // Arrange

@@ -108,7 +108,7 @@ Swagger UI available at `/swagger` in the Development environment.
 ## Key Architecture Decisions
 
 ### Cache Invalidation — Remove Only
-After `POST` and `PUT`, only `RemoveAsync` is called.  
+After `PUT`, only `RemoveAsync` is called.  
 No new value is written to cache — the next value will be read from the Repository on the next request.  
 **Reason:** Prevents race conditions between invalidation and cache updates.
 
@@ -293,7 +293,7 @@ Run with: `dotnet test`
 ## What is **Forbidden** in This Project
 
 - Business logic in `ProductsController` — it is Orchestration only
-- Writing to cache after PUT/POST — only `Remove`
+- Writing to cache after PUT — only `Remove`
 - `SlidingExpiration` — only `AbsoluteExpiration`
 - Storing `null` in cache (null/404 caching is disabled)
 - Using Semaphore for stampede prevention — use `SharedTaskStore`

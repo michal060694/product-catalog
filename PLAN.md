@@ -143,7 +143,7 @@ dotnet add ProductCatalog.Tests package Microsoft.AspNetCore.Mvc.Testing
 **What we build:**
 - `CreateProductDto.cs`
 - `CreateProductDtoValidator` — FluentValidation (Name not empty, Price > 0, Stock >= 0)
-- `ProductService.CreateProduct` — Add to Repo → Remove from Cache
+- `ProductService.CreateProduct` — Add to Repo
 - `ProductProfile.cs` — AutoMapper
 - Controller: POST /api/v1/products → 201 Created + Location header
 
@@ -153,11 +153,11 @@ dotnet add ProductCatalog.Tests package Microsoft.AspNetCore.Mvc.Testing
 |---|---|
 | Validation | FluentValidation — input validation at the system boundary, not in Entity |
 | Mapping | AutoMapper — DTO protects against exposing sensitive data from the Entity |
-| Invalidation | Remove only — we don't populate cache for a product that may not be requested |
+| Invalidation | None — new product has a new ID with no existing cache entry to invalidate |
 
 **What you can demo:**
 - POST product → 201 Created
-- GET immediately after → 200 (comes from Repo because Cache was cleared)
+- GET immediately after → 200 (comes from Repo — new product has no cache entry)
 - POST with empty Name → 400 ValidationError
 
 ---

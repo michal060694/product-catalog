@@ -8,7 +8,7 @@
 
 | # | Topic | Decision / Status | Section |
 |---|---|---|---|
-| 1 | Cache Invalidation | Remove-only after `POST`/`PUT` — no write-back | [1.1](#11-cache-invalidation--remove-only-no-write-back) |
+| 1 | Cache Invalidation | Remove-only after `PUT` — no write-back | [1.1](#11-cache-invalidation--remove-only-no-write-back) |
 | 2 | Stampede Prevention | `SharedTaskStore` (`Lazy<Task>`) — no Semaphore | [1.2](#12-stampede-prevention--sharedtaskstore-no-semaphore) |
 | 3 | GET/PUT Race Condition | Generation Guard in `SetAsync` — stale write rejected | [1.3](#13-generation-guard-in-setasync) |
 | 4 | Expiration Strategy | Absolute TTL only — no Sliding Expiration | [1.4](#14-absolute-expiration-only) |
@@ -35,7 +35,7 @@
 ### 1.1 Cache Invalidation — Remove Only (No Write-Back)
 
 - **Status:** APPROVED
-- **Decision:** After `POST` and `PUT`, only `RemoveAsync` is called — no new value is written to cache after mutation.
+- **Decision:** After `PUT`, only `RemoveAsync` is called — no new value is written to cache after mutation.
 - **Consequences:**
   - Pros: Eliminates race window — a concurrent `GET` in-flight before `PUT` cannot overwrite the freshly-invalidated entry with a stale value
   - Cons: First read after any mutation always hits the repository (one extra round-trip)

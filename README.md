@@ -203,7 +203,7 @@ A product catalog is read-heavy but not latency-critical on expiry. Absolute exp
 
 ### 3. Cache Invalidation — Explicit `Remove` on Mutation
 
-On `PUT` and `POST`, the cache entry is **removed** rather than updated. The next `GET` repopulates from the repository (the single source of truth). This avoids the complexity and risk of synchronizing cache updates with partial writes.
+On `PUT`, the cache entry is **removed** rather than updated. The next `GET` repopulates from the repository (the single source of truth). This avoids the complexity and risk of synchronizing cache updates with partial writes.
 
 ### 4. Null / 404 Not Cached
 

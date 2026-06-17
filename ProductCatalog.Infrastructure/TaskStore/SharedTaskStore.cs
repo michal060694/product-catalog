@@ -25,7 +25,8 @@ public class SharedTaskStore : ISharedTaskStore
             return existing.Value;
         }
 
-        var lazy = _inFlight.GetOrAdd(key, k => new Lazy<Task<Product?>>(() =>
+        Lazy<Task<Product?>>? lazy = null;
+        lazy = _inFlight.GetOrAdd(key, k => new Lazy<Task<Product?>>(() =>
         {
             _logger.LogInformation("InFlight CREATED for cache key {CacheKey}.", key);
             var task = factory();
@@ -41,7 +42,7 @@ public class SharedTaskStore : ISharedTaskStore
                 TaskScheduler.Default);
 
             _ = Task.Delay(_timeout).ContinueWith(
-                t => _inFlight.TryRemove(new KeyValuePair<string, Lazy<Task<Product?>>>(key, lazy)),
+                t => _inFlight.TryRemove(new KeyValuePair<string, Lazy<Task<Product?>>>(key, lazy!)),
                 CancellationToken.None,
                 TaskContinuationOptions.None,
                 TaskScheduler.Default);
