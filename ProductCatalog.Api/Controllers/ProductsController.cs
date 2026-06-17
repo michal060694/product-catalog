@@ -11,12 +11,14 @@ public class ProductsController : ControllerBase
 
     public ProductsController(IProductService service) => _service = service;
 
+    /// <summary>Get product by ID</summary>
     [HttpGet("{id:int}")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetByIdAsync(int id, CancellationToken ct)
         => Ok(await _service.GetProductAsync(id, ct));
 
+    /// <summary>Create a new product</summary>
     [HttpPost]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -26,6 +28,7 @@ public class ProductsController : ControllerBase
         return CreatedAtAction(nameof(GetByIdAsync), new { id = created.Id }, created);
     }
 
+    /// <summary>Update an existing product</summary>
     [HttpPut("{id:int}")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]

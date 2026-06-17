@@ -55,15 +55,15 @@ Swagger UI is available at `http://localhost:5115/swagger` when running in Devel
 
 | Method | Route | Description |
 |---|---|---|
-| `GET` | `/api/products/{id}` | Fetch product by ID (cached) |
-| `POST` | `/api/products` | Create a new product (invalidates cache) |
-| `PUT` | `/api/products/{id}` | Update a product (invalidates cache) |
+| `GET` | `/api/v1/products/{id}` | Fetch product by ID (cached) |
+| `POST` | `/api/v1/products` | Create a new product (invalidates cache) |
+| `PUT` | `/api/v1/products/{id}` | Update a product (invalidates cache) |
 
 ### Request & Response Examples
 
-**POST /api/products**
+**POST /api/v1/products**
 ```http
-POST /api/products
+POST /api/v1/products
 Content-Type: application/json
 
 {
@@ -74,7 +74,7 @@ Content-Type: application/json
 ```
 ```http
 HTTP/1.1 201 Created
-Location: /api/products/1
+Location: /api/v1/products/1
 
 {
   "id": 1,
@@ -86,7 +86,7 @@ Location: /api/products/1
 
 > `costPrice` is accepted on write but intentionally excluded from `ProductDto` — it is never exposed to the client or written to cache. For demonstration of ability to filter sensitive information from the Client
 
-**GET /api/products/1**
+**GET /api/v1/products/1**
 ```http
 HTTP/1.1 200 OK
 
@@ -98,9 +98,9 @@ HTTP/1.1 200 OK
 }
 ```
 
-**PUT /api/products/1**
+**PUT /api/v1/products/1**
 ```http
-PUT /api/products/1
+PUT /api/v1/products/1
 Content-Type: application/json
 
 {
@@ -122,9 +122,9 @@ HTTP/1.1 200 OK
 
 **Validation errors (400)**
 ```http
-GET /api/products/0    → 400 Bad Request
-GET /api/products/-5   → 400 Bad Request
-GET /api/products/99   → 404 Not Found
+GET /api/v1/products/0    → 400 Bad Request
+GET /api/v1/products/-5   → 400 Bad Request
+GET /api/v1/products/99   → 404 Not Found
 ```
 
 ---
@@ -134,7 +134,7 @@ GET /api/products/99   → 404 Not Found
 ### Step 1 — First GET (Cache Miss)
 
 ```http
-GET /api/products/1
+GET /api/v1/products/1
 ```
 
 ```
@@ -147,7 +147,7 @@ GET /api/products/1
 ### Step 2 — Second GET (Cache Hit)
 
 ```http
-GET /api/products/1
+GET /api/v1/products/1
 ```
 
 ```
@@ -158,7 +158,7 @@ GET /api/products/1
 ### Step 3 — Update Product (Cache Invalidated)
 
 ```http
-PUT /api/products/1
+PUT /api/v1/products/1
 ```
 
 ```
@@ -169,7 +169,7 @@ PUT /api/products/1
 ### Step 4 — Next GET (Cache Miss again)
 
 ```http
-GET /api/products/1
+GET /api/v1/products/1
 ```
 
 ```
@@ -212,8 +212,8 @@ If a product is not found in the repository, `null` is returned and nothing is w
 `SharedTaskStore` uses `ConcurrentDictionary<string, Lazy<Task<Product?>>>` to coalesce concurrent in-flight requests for the same key into **one** repository call.
 
 ```
-Without protection:  1,000 concurrent GET /api/products/1 → 1,000 repository hits
-With SharedTaskStore: 1,000 concurrent GET /api/products/1 → 1 repository hit
+Without protection:  1,000 concurrent GET /api/v1/products/1 → 1,000 repository hits
+With SharedTaskStore: 1,000 concurrent GET /api/v1/products/1 → 1 repository hit
 ```
 
 A `Semaphore` was explicitly rejected: it serializes requests (queue), wastes threads, and requires careful release handling. `Lazy<Task<T>>` is lock-free and naturally shares the same `Task` reference.

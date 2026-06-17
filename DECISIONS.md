@@ -177,7 +177,7 @@
 
 ### 5.3 Idempotency Key for `POST`
 
-**What:** Accept an `Idempotency-Key` header on `POST /api/products`. Middleware intercepts the header, stores the response DTO in cache on the first request, and returns the cached response on replay without touching the service.  
+**What:** Accept an `Idempotency-Key` header on `POST /api/v1/products`. Middleware intercepts the header, stores the response DTO in cache on the first request, and returns the cached response on replay without touching the service.  
 **Need it addresses:** Client retries and double-clicks can create duplicate products — there is currently no protection against a `POST` being delivered more than once.
 - Pros: Prevents duplicate product creation transparently; no service-layer changes required
 - Cons: Extra cache key namespace; TTL management for idempotency keys; client must generate and send the header

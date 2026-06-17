@@ -96,7 +96,7 @@ dotnet add ProductCatalog.Tests package Microsoft.AspNetCore.Mvc.Testing
 - `ProductDto.cs`
 - `ProductProfile.cs` mapper from Entity to Dto
 - `IProductService` + `ProductService.GetProduct` — calls Repo directly
-- `ProductsController` — GET /api/products/{id}
+- `ProductsController` — GET /api/v1/products/{id}
 - `Program.cs` + basic DI
 - `ApplicationServiceExtensions.cs` - used for DI registration from Application
 
@@ -145,7 +145,7 @@ dotnet add ProductCatalog.Tests package Microsoft.AspNetCore.Mvc.Testing
 - `CreateProductDtoValidator` — FluentValidation (Name not empty, Price > 0, Stock >= 0)
 - `ProductService.CreateProduct` — Add to Repo → Remove from Cache
 - `ProductProfile.cs` — AutoMapper
-- Controller: POST /api/products → 201 Created + Location header
+- Controller: POST /api/v1/products → 201 Created + Location header
 
 **Design Decisions:**
 
@@ -169,7 +169,7 @@ dotnet add ProductCatalog.Tests package Microsoft.AspNetCore.Mvc.Testing
 - `UpdateProductDtoValidator` — FluentValidation
 - `ProductService.UpdateProduct` — Update in Repo → `Remove` from Cache (not Set!)
 - Version bump on Entity — solution for Race Condition of concurrent GET+PUT
-- Controller: PUT /api/products/{id} → 200 OK
+- Controller: PUT /api/v1/products/{id} → 200 OK
 
 **Design Decisions:**
 

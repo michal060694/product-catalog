@@ -166,7 +166,7 @@ services.AddValidatorsFromAssemblyContaining<CreateProductDtoValidator>();
 
 ---
 
-## Cache Flow — GET /api/products/{id}
+## Cache Flow — GET /api/v1/products/{id}
 
 ```
 Request arrives
