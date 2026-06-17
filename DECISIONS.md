@@ -17,7 +17,7 @@
 | 7 | Sensitive Data | `CostPrice` excluded from all DTOs, responses, and logs | [1.7](#17-costprice--sensitive-field-never-exposed) |
 | 8 | Null / 404 Caching | Not cached — prevents masking a future creation | [1.8](#18-null--404--not-cached) |
 | 9 | TOCTOU | Per-key lock; upgrade path → Striped Locking (64 stripes) | [3](#3-toctou-time-of-check--time-of-use) |
-| 10 | Cache Poisoning | `MinVersion` on `RemoveAsync` → checked in `SetAsync` | [4](#4-cache-poisoning-after-invalidation) |
+| 10 | Cache Poisoning | Generation counter in `RemoveAsync` → checked in `SetAsync` | [4](#4-cache-poisoning-after-invalidation) |
 | 11 | Redis (future) | `RedisProductCache : IProductCache` — zero Application changes | [5.1](#51-redis--distributed-cache) |
 | 12 | Null Caching (future) | 30 s configurable TTL + explicit removal on `POST` | [5.2](#52-short-lived-null-caching-negative-caching) |
 | 13 | Idempotency (future) | `Idempotency-Key` header on `POST` | [5.3](#53-idempotency-key-for-post) |
@@ -134,23 +134,23 @@
 
 ## 3. TOCTOU (Time-of-Check / Time-of-Use)
 
-A per-key lock is applied in `MemoryProductCache` to prevent the Check-Then-Act race inside `SetAsync`.  
-**Why:** Without a lock, two concurrent threads can both read `existing.Version`, both conclude they should write, and one of them overwrites the other with a stale value.
-
-**Production consideration:** In high-throughput systems a single global lock or per-key lock over a `ConcurrentDictionary` becomes a bottleneck. The upgrade path is **Striped Locking** — a fixed-size array of locks (e.g., 64 stripes) where `lock = stripes[key.GetHashCode() % 64]`. Benefits:
-- Reduces contention by 64× compared to a single lock
-- Eliminates the need to flush the `ConcurrentDictionary` on cleanup
-- Transparent to callers — same interface, same behavior
+- **Status:** APPROVED
+- **Problem:** Without synchronization, two concurrent threads can both read same version in `SetAsync`, both conclude they are allowed to write, and one of them overwrites the other with a stale value — a classic Check-Then-Act race.
+- **Solution:** A per-key lock is acquired inside `SetAsync` before reading and comparing Tokens. Only the thread holding the lock may proceed to write, making the check and the write a single atomic operation.
+- **Consequences:**
+  - Pros: Eliminates the version-overwrite race with zero external dependencies
+  - Cons: In high-throughput systems, per-key locking can become a bottleneck. The upgrade path is **Striped Locking** — a fixed-size array of locks (e.g., 64 stripes) where `lock = stripes[key.GetHashCode() % 64]`, which reduces contention by 64× while remaining transparent to callers
 
 ---
 
 ## 4. Cache Poisoning After Invalidation
 
-**Threat:** After `PUT` calls `RemoveAsync`, a slow in-flight `GET` (whose factory ran before the `PUT`) could call `SetAsync` with an outdated value and re-poison the cache.
-
-**Defense implemented:** `RemoveAsync` increments `_generations[key]` under a per-key lock. The in-flight `GET` factory captured `expectedGeneration` before it queried the repository — that snapshot is now stale. When the factory calls `SetAsync`, the primary guard `_generations.GetValueOrDefault(key, 0L) != expectedGeneration` evaluates to `true` and the write is rejected.
-
-This ensures that even if a stale inflight task completes after the invalidation, it cannot write its outdated result back into the cache.
+- **Status:** APPROVED
+- **Problem:** After `PUT` calls `RemoveAsync`, a slow in-flight `GET` (whose factory ran before the `PUT`) could call `SetAsync` with an outdated value and re-poison the cache with stale data.
+- **Solution:** `RemoveAsync` increments a generation counter for the key (`_generations[key]`) under a per-key lock. The in-flight `GET` factory captures `expectedGeneration` before querying the repository. When it later calls `SetAsync`, the guard `_generations.GetValueOrDefault(key, 0L) != expectedGeneration` evaluates to `true` and the write is rejected.
+- **Consequences:**
+  - Pros: Stale in-flight tasks can never poison the cache after an invalidation, regardless of timing
+  - Cons: Adds a generation counter per key that must be maintained alongside the cache entry; lock scope must cover both the generation check and the write to remain race-free
 
 ---
 
@@ -158,78 +158,64 @@ This ensures that even if a stale inflight task completes after the invalidation
 
 ### 5.1 Redis — Distributed Cache
 
-- **Status:** FUTURE
-- **Context/Decision:** Implement `RedisProductCache : IProductCache` using `IDistributedCache` or `StackExchange.Redis`. `IMemoryCache` is per-process — in a multi-instance deployment each instance has its own cache island and invalidation does not propagate across instances.
-- **Solution:** Replace `MemoryProductCache` with `RedisProductCache` and swap the DI registration in `AddInfrastructure()` — no other file changes.
-- **Consequences:**
-  - Pros: Shared cache state across all instances; invalidation is global; standard production pattern for scaled services
-  - Cons: Infrastructure dependency (Redis instance); network latency vs. in-process; operational complexity
+**What:** Implement `RedisProductCache : IProductCache` using `StackExchange.Redis`, registered in place of `MemoryProductCache` via a single DI swap in `AddInfrastructure()`.  
+**Problem:** `IMemoryCache` is per-process — in a multi-instance deployment each instance has its own cache island and invalidation does not propagate across instances.
+- Pros: Shared cache state across all instances; invalidation is global; standard production pattern for scaled services
+- Cons: no cons
 
 ---
 
 ### 5.2 Short-Lived Null Caching (Negative Caching)
 
-- **Status:** FUTURE
-- **Context/Decision:** When a product ID does not exist, cache a sentinel `null` value for a short configurable TTL (e.g., `NullTtlSeconds = 30`). On `POST`, the null sentinel for that key is explicitly removed.
-- **Solution:** Store a typed sentinel in `IProductCache` with a separate `NullTtlSeconds` TTL; call `RemoveAsync(key)` inside `CreateProduct` to unblock immediate access.
-- **Consequences:**
-  - Pros: Eliminates redundant repository hits for repeated non-existent ID lookups (e.g., bot traffic or stale client references)
-  - Cons: A product created within the TTL window is unreachable until the sentinel expires — mitigated by explicit removal on `POST`
+**What:** When a product ID does not exist, store a typed sentinel value in `IProductCache` with a short dedicated TTL (e.g., `NullTtlSeconds = 30`). On `POST`, explicitly remove the sentinel for that key.  
+**Need it addresses:** Repeated lookups for non-existent IDs (e.g., bot traffic, stale client references) reach the repository on every request — a cache that only stores found products cannot shield against this.
+- Pros: Eliminates redundant repository hits for non-existent IDs
+- Cons: A product created within the TTL window is unreachable until the sentinel expires — mitigated by explicit removal on `POST`
 
 ---
 
 ### 5.3 Idempotency Key for `POST`
 
-- **Status:** FUTURE
-- **Context/Decision:** Accept an `Idempotency-Key` header on `POST /api/products`. Store the key short-lived in cache and return the original response on replay.
-- **Solution:** Middleware intercepts `Idempotency-Key`; on first request stores the response DTO in cache; on replay returns the cached response without hitting the service.
-- **Consequences:**
-  - Pros: Prevents duplicate product creation on client retries or double-clicks
-  - Cons: Extra cache key namespace; TTL management for idempotency keys; client must generate and send the header
+**What:** Accept an `Idempotency-Key` header on `POST /api/products`. Middleware intercepts the header, stores the response DTO in cache on the first request, and returns the cached response on replay without touching the service.  
+**Need it addresses:** Client retries and double-clicks can create duplicate products — there is currently no protection against a `POST` being delivered more than once.
+- Pros: Prevents duplicate product creation transparently; no service-layer changes required
+- Cons: Extra cache key namespace; TTL management for idempotency keys; client must generate and send the header
 
 ---
 
 ### 5.4 Decorator Pattern — `ProductCacheDecorator`
 
-- **Status:** FUTURE
-- **Context/Decision:** Extract caching responsibility from `ProductService` into a `ProductCacheDecorator` that wraps `IProductService`. `ProductService` would contain only business logic.
-- **Solution:** Register `ProductCacheDecorator` as the outer `IProductService` in DI, wrapping the inner `ProductService` — no changes to either class's internals.
-- **Consequences:**
-  - Pros: Clean SRP separation; cache behavior independently testable; swappable without touching business logic
-  - Cons: Extra class to maintain; DI registration becomes slightly more complex (decorator wiring)
+**What:** Extract all caching and coalescing logic from `ProductService` into a `ProductCacheDecorator : IProductService` that wraps the inner service. Register it as the outer binding in DI — no changes to either class's internals.  
+**Need it addresses:** `ProductService` currently mixes business logic with caching concerns, which limits independent testability and violates SRP as the service grows.
+- Pros: Clean SRP separation; cache behavior independently testable; swappable without touching business logic
+- Cons: Extra class to maintain.
 
 ---
 
 ### 5.5 Health Checks
 
-- **Status:** FUTURE
-- **Context/Decision:** Add `/health` endpoint via `services.AddHealthChecks()` with checks for memory pressure, repository reachability, and Redis connectivity.
-- **Solution:** Register custom `IHealthCheck` implementations for each dependency and map `/health` in `Program.cs`.
-- **Consequences:**
-  - Pros: Kubernetes-ready liveness/readiness probes; early warning on cache or storage degradation
-  - Cons: Health endpoint itself must be secured or rate-limited; memory check thresholds require tuning per environment
+**What:** Add a `/health` endpoint via `services.AddHealthChecks()` with custom `IHealthCheck` implementations for memory pressure, repository reachability, and (when present) Redis connectivity.  
+**Need it addresses:** There is currently no operational signal for whether the service and its dependencies are healthy — a requirement for any Kubernetes liveness/readiness probe setup.
+- Pros: Kubernetes-ready probes; early warning on cache or storage degradation
 
 ---
 
 ### 5.6 Docker / Containerization
 
-- **Status:** FUTURE
-- **Context/Decision:** Provide a `Dockerfile` and `docker-compose.yml` including a Redis container for local development.
-- **Solution:** Multi-stage `Dockerfile` (build + runtime) + `docker-compose.yml` with `redis:alpine` service and an environment variable pointing the API at it.
-- **Consequences:**
-  - Pros: Reproducible environment; enables local testing of the distributed cache scenario without a remote Redis
-  - Cons: Docker knowledge required; image size management; compose version compatibility
+**What:** Provide a multi-stage `Dockerfile` (build + runtime) and a `docker-compose.yml` with a `redis:alpine` service and an environment variable pointing the API at it.  
+**Need it addresses:** Developers currently cannot test the distributed cache scenario locally without a separately managed Redis instance — there is no reproducible environment definition.
+- Pros: Reproducible local environment; enables end-to-end testing of the Redis path without a remote instance
 
 ---
 
 ### 5.7 Broader Test Coverage
 
-- **Status:** FUTURE
-- **Context/Decision:** Full unit test coverage per method + integration tests with `WebApplicationFactory<Program>` covering the full HTTP pipeline, including middleware, routing, and DI.
-- **Solution:** Add `WebApplicationFactory<Program>` test class; spin up the full app in-process and drive it via `HttpClient` without mocking the infrastructure.
-- **Consequences:**
-  - Pros: Catches regressions on the full request pipeline; integration tests reflect real behavior better than unit tests alone
-  - Cons: Slower test suite; `WebApplicationFactory` setup requires careful port and configuration management
+**What:** Two layers of additional tests:
+1. **Unit tests** — full per-method coverage for every service, repository, and cache method, including all error paths and edge cases currently not exercised
+2. **Integration tests** — `WebApplicationFactory<Program>` that spins up the full app in-process and drives it via `HttpClient`, covering middleware, routing, DI wiring, and the full HTTP pipeline end-to-end
+
+**Need it addresses:** Unit tests ensure every code path is exercised in isolation; integration tests catch regressions that unit tests cannot — misconfigured DI, incorrect middleware ordering, or routing mistakes.
+- Pros: Unit tests are fast and pinpoint failures precisely; integration tests reflect real behavior and validate the wiring between layers
 
 ---
 
@@ -240,20 +226,10 @@ This ensures that even if a stale inflight task completes after the invalidation
 | **Stale Data** | Absolute TTL + invalidation on write |
 | **Cache Stampede** | `SharedTaskStore` — single inflight task per key |
 | **GET/PUT Race Condition** | Version Guard in `SetAsync` |
-| **Cache Poisoning** | `MinVersion` check after `RemoveAsync` |
+| **Cache Poisoning** | Generation counter incremented in `RemoveAsync` — stale in-flight `SetAsync` calls rejected |
 | **Caching Null** | Not cached (intentional); see [5.2](#52-short-lived-null-caching-negative-caching) for the upgrade |
 | **Expiration Strategy** | Absolute expiration only — predictable staleness window |
 | **Cache Key Collision** | `CacheKeys.ForProduct(id)` → `"product:{id}"` — namespace-scoped, extendable to `product:{tenantId}:{id}` |
 | **Memory Cache vs Distributed Cache** | `IProductCache` abstraction — Redis swap requires one file change |
 
----
-
-## 7. Performance Notes
-
-- Cache entries are **never stored permanently**. Every `POST` or `PUT` removes the key. The cache is populated lazily — only on the next `GET` after a miss.
-- This approach trades a single extra read-latency on the first post-mutation request for guaranteed freshness and no stale-write risk.
-- In read-heavy workloads, the HIT/MISS ratio will be high after warmup. The cost of the occasional cold read is negligible compared to the consistency guarantees gained.
-
----
-
-*Document authored by Michal Ben Shalom — June 2026*
+*Document authored by Michal — June 2026*
