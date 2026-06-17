@@ -25,6 +25,7 @@
 | 15 | Health Checks (future) | `/health` — memory, repository, Redis | [5.5](#55-health-checks) |
 | 16 | Docker (future) | `Dockerfile` + `docker-compose.yml` with Redis container | [5.6](#56-docker--containerization) |
 | 17 | Test Coverage (future) | Full unit + integration tests with `WebApplicationFactory` | [5.7](#57-broader-test-coverage) |
+| 18 | Value Objects (future) | `ProductId`, `Money`, `StockQuantity` — invariants live in the type | [5.8](#58-value-objects-for-domain-primitives) |
 
 ---
 
@@ -216,6 +217,15 @@
 
 **Need it addresses:** Unit tests ensure every code path is exercised in isolation; integration tests catch regressions that unit tests cannot — misconfigured DI, incorrect middleware ordering, or routing mistakes.
 - Pros: Unit tests are fast and pinpoint failures precisely; integration tests reflect real behavior and validate the wiring between layers
+
+---
+
+### 5.8 Value Objects for Domain Primitives
+
+**What:** Replace `int Id`, `decimal Price`, and `int Stock` on `Product` with three `record` Value Objects — `ProductId`, `Money`, `StockQuantity` — each validating its invariant in its constructor. DTOs stay as primitives; AutoMapper bridges the two with `ConvertUsing` converters.  
+**Need it addresses:** `Price`, `Stock`, and `Id` currently travel as raw primitives — a caller can write `new Product { Price = -50m }` and the compiler says nothing. Business rules are scattered across validators instead of living in the type.
+- Pros: Invalid state cannot be constructed; compile-time prevents passing a `productName` where an `id` is expected; single source of truth for each invariant
+- Cons: AutoMapper 16.x requires non-trivial configuration to map Value Objects into positional `record` DTOs — `ConvertUsing` type maps interact with constructor resolution in non-obvious ways
 
 ---
 

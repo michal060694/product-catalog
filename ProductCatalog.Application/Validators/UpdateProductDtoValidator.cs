@@ -7,7 +7,6 @@ public class UpdateProductDtoValidator : AbstractValidator<UpdateProductDto>
     public UpdateProductDtoValidator()
     {
         RuleFor(x => x.Name)
-            .NotEmpty()
             .Must(n => !string.IsNullOrWhiteSpace(n))
             .WithMessage("'Name' must not be whitespace only.");
 

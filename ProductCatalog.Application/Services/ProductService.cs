@@ -37,7 +37,7 @@ public class ProductService : IProductService
 
         var product = await _taskStore.GetOrAddAsync(key, async () =>
         {
-            var gen = await _cache.GetGenerationAsync(key, ct);
+            var gen = await _cache.GetGenerationAsync(key, CancellationToken.None);
             var p = _repo.GetById(id);
             if (p is not null)
                 await _cache.SetAsync(key, p, gen, CancellationToken.None);
