@@ -31,39 +31,90 @@
 ## 1. Key Decisions Made
 
 ### 1.1 Cache Invalidation — Remove Only (No Write-Back)
-After `POST` and `PUT`, only `RemoveAsync` is called. No new value is written to cache after mutation.  
-**Why:** Write-back introduces a race window — a concurrent `GET` that was inflight before the `PUT` could overwrite the freshly-written cache entry with a stale value. Remove-only guarantees the next read always pulls from the repository.
+
+- **Status:** APPROVED
+- **Context/Decision:** After `POST` and `PUT`, only `RemoveAsync` is called. No new value is written to cache after mutation.
+- **Solution:** `ProductService` calls `_cache.RemoveAsync(key, cancellationToken)` after every write. `RemoveAsync` increments `_generations[key]` under a per-key lock. Before querying the repository, the caller snapshots `expectedGeneration` via `GetGenerationAsync`; `SetAsync` rejects the write if `_generations[key] != expectedGeneration`.
+- **Consequences:**
+  - Pros: Eliminates race window — a concurrent `GET` inflight before `PUT` cannot overwrite the freshly-invalidated entry with a stale value
+  - Cons: First read after any mutation always hits the repository (one extra round-trip)
+
+---
 
 ### 1.2 Stampede Prevention — `SharedTaskStore` (No Semaphore)
-`ConcurrentDictionary<string, Lazy<Task<Product?>>>` guarantees that 100 concurrent requests for the same uncached product produce **exactly one** repository call.  
-**Why:** `Lazy<T>` provides atomic creation semantics without a lock or semaphore. The inflight task is removed immediately after completion via `ContinueWith`, so subsequent requests after the first one completes go through the normal cache path.
 
-### 1.3 Version Guard in `SetAsync`
-Before writing to cache, `MemoryProductCache.SetAsync` checks:  
-```
-if existing.Version >= product.Version → skip write
-```
-**Why:** A `GET` issued before a `PUT` may return from the repository *after* the `PUT` has already invalidated the cache and the next `GET` has populated it with a fresh value. Without the version guard, the slow `GET` would overwrite the cache with a stale product.
+- **Status:** APPROVED
+- **Context/Decision:** `ConcurrentDictionary<string, Lazy<Task<Product?>>>` guarantees that 100 concurrent requests for the same uncached product produce **exactly one** repository call. `Lazy<T>` provides atomic creation semantics without a lock or semaphore. The inflight task is removed immediately after completion via `ContinueWith`.
+- **Solution:** `SharedTaskStore.GetOrAddAsync` wraps the factory in `Lazy<Task>` — all concurrent callers await the same Task instance.
+- **Consequences:**
+  - Pros: Non-blocking (no thread queuing vs. Semaphore); N concurrent misses → 1 repository call; no explicit lock needed
+  - Cons: More complex than a simple lock; task cleanup in `ContinueWith` must be reliable to avoid memory leaks
+
+---
+
+### 1.3 Generation + Version Guard in `SetAsync`
+
+- **Status:** APPROVED
+- **Context/Decision:** A `GET` issued before a `PUT` may return from the repository *after* the `PUT` has already invalidated the cache. Two guards defend against this inside `MemoryProductCache.SetAsync`, applied in order under a per-key lock.
+- **Solution:**
+  **Primary — Generation check:** `if (_generations.GetValueOrDefault(key, 0L) != expectedGeneration) → abort`. The caller snapshots `expectedGeneration` before hitting the repository; any `RemoveAsync` in between increments the counter, making the snapshot stale.
+- **Consequences:**
+  - Pros: Generation check is cache-state-aware and invalidation-aware.
+  - Cons: generation counter grows monotonically and is never reset (acceptable for in-process lifetime)
+
+---
 
 ### 1.4 Absolute Expiration Only
-TTL is fixed at `ProductTtlMinutes` (default: 5 min, configured to 1 min in `appsettings.json`). No `SlidingExpiration`.  
-**Why:** Sliding expiration makes it impossible to reason about the maximum staleness window. A product accessed frequently could stay cached indefinitely. Absolute expiration provides a hard freshness guarantee.
+
+- **Status:** APPROVED
+- **Decision:** TTL is fixed at `ProductTtlMinutes` (default: 5 min, configured to 1 min in `appsettings.json`). No `SlidingExpiration`.
+- **Consequences:**
+  - Pros: Hard freshness guarantee — maximum staleness is always bounded; simple to reason about
+  - Cons: Frequently-accessed items are evicted at fixed intervals even when hot
+
+---
 
 ### 1.5 `IProductCache` Abstraction (Redis-Ready)
-`IMemoryCache` is never used outside `Infrastructure`. All cache operations go through `IProductCache`.  
-**Why:** Switching to Redis requires replacing `MemoryProductCache` with `RedisProductCache` only — zero changes in `Application` or `Domain`. See [Section 5.1](#51-redis-distributed-cache).
+
+- **Status:** APPROVED
+- **Context:** `IMemoryCache` is never used outside `Infrastructure`. All cache operations go through `IProductCache`.
+- **How:** `IProductCache` defined in `Domain`; `MemoryProductCache` in `Infrastructure` is the only class that touches `IMemoryCache`.
+- **Consequences:**
+  - Pros: Switching to Redis requires replacing only `MemoryProductCache` — zero changes in `Application` or `Domain`
+  - Cons: no cons
+
+---
 
 ### 1.6 `ConcurrentDictionary` for Repository
-`InMemoryProductRepository` uses `ConcurrentDictionary<int, Product>` and `Interlocked` for ID generation.  
-**Why:** A plain `Dictionary` is not thread-safe. Concurrent `POST` requests against a plain `Dictionary` cause data corruption and `KeyNotFoundException` under race conditions.
+
+- **Status:** APPROVED
+- **Problem:** The repository is accessed concurrently by multiple requests. A regular Dictionary<TKey,TValue> is not thread-safe, so simultaneous reads and writes can lead to race conditions, corrupted internal state, exceptions, or lost updates. ID generation also must remain unique under concurrent POST requests.
+- **Solution:** Use `ConcurrentDictionary<int, Product>` for the in-memory store and `Interlocked.Increment(ref _nextId)` for ID generation.
+- **Consequences:**
+  - Pros: - Thread-safe reads and writes without explicit locks; Concurrent POST requests cannot generate duplicate IDs; Prevents data corruption and collection-state exceptions under load; Simpler implementation than manual lock management.
+  - Cons: State lost on restart; single-instance only(intended for practice only, not for a Production system)
+
+---
 
 ### 1.7 `CostPrice` — Sensitive Field Never Exposed
-`Product.CostPrice` is not mapped to `ProductDto`. `ProductProfile` explicitly ignores it via `opt.Ignore()`.  
-**Why:** Internal cost data must not leak to clients. No accidental mapping, no logging of this field anywhere in the codebase.
+
+- **Status:** APPROVED
+- **Context/Decision:** `Product.CostPrice` is a Sensitive data.
+- **Solution:** `ProductProfile` declares Ignore(), Not logged anywhere in the codebase.
+- **Consequences:**
+  - Pros: Internal cost data cannot accidentally leak to clients; opt-in mapping makes omission the safe default
+  - Cons: no cons
+
+---
 
 ### 1.8 Null / 404 — Not Cached
-When a product is not found, `ProductNotFoundException` is thrown. Nothing is written to cache.  
-**Why:** Caching nulls indefinitely would mask the moment a product is actually created. See [Section 5.2](#52-short-lived-null-caching-negative-caching) for the production-grade improvement.
+
+- **Status:** APPROVED
+- **Context/Decision:** When a product is not found.
+- **Solution:** The factory in `SharedTaskStore` throws `ProductNotFoundException` on null — `SetAsync` is never reached for missing products and nothing is written to cache.
+- **Consequences:**
+  - Pros: Newly created products become accessible immediately — no TTL wait for a null sentinel to expire
+  - Cons: Every lookup for a non-existent ID hits the repository; see [Section 5.2](#52-short-lived-null-caching-negative-caching) for the upgrade
 
 ---
 
@@ -77,6 +128,7 @@ When a product is not found, `ProductNotFoundException` is thrown. Nothing is wr
 | Slow `GET` returns *after* a `PUT` has already updated the product | Version Guard in `SetAsync` prevents the stale value from entering cache | ✅ Handled |
 | 100 concurrent `GET`s for the same uncached product | `SharedTaskStore` ensures exactly one repository call | ✅ Handled |
 | `GET` and `PUT` for the same key run simultaneously | `PUT` removes cache entry; `GET` either hits the old value or re-fetches; Version Guard prevents regression | ✅ Handled |
+| Two concurrent `PUT`s for the same key with different versions | Version Guard in `SetAsync` ensures only the higher version is persisted in cache | ✅ Handled |
 
 ---
 
@@ -94,9 +146,9 @@ A per-key lock is applied in `MemoryProductCache` to prevent the Check-Then-Act 
 
 ## 4. Cache Poisoning After Invalidation
 
-**Threat:** After `PUT` calls `RemoveAsync`, a slow in-flight `GET` (whose factory ran before the `PUT`) could call `SetAsync` with an outdated version and re-poison the cache.
+**Threat:** After `PUT` calls `RemoveAsync`, a slow in-flight `GET` (whose factory ran before the `PUT`) could call `SetAsync` with an outdated value and re-poison the cache.
 
-**Defense implemented:** `SetAsync` stores `MinVersion` alongside the removal. On any subsequent `SetAsync`, if `product.Version < minVersion`, the write is rejected.
+**Defense implemented:** `RemoveAsync` increments `_generations[key]` under a per-key lock. The in-flight `GET` factory captured `expectedGeneration` before it queried the repository — that snapshot is now stale. When the factory calls `SetAsync`, the primary guard `_generations.GetValueOrDefault(key, 0L) != expectedGeneration` evaluates to `true` and the write is rejected.
 
 This ensures that even if a stale inflight task completes after the invalidation, it cannot write its outdated result back into the cache.
 
@@ -105,38 +157,79 @@ This ensures that even if a stale inflight task completes after the invalidation
 ## 5. What Would Be Added With More Time
 
 ### 5.1 Redis — Distributed Cache
-Implement `RedisProductCache : IProductCache` using `IDistributedCache` or `StackExchange.Redis`.  
-**Why it matters:** `IMemoryCache` is per-process. In a multi-instance deployment (Kubernetes, App Service with multiple replicas), each instance has its own cache island — invalidation on one instance does not propagate to others. Redis is the shared source of truth.  
-**Implementation cost:** Zero changes outside `Infrastructure` — swap one registration in `AddInfrastructure()`.
+
+- **Status:** FUTURE
+- **Context/Decision:** Implement `RedisProductCache : IProductCache` using `IDistributedCache` or `StackExchange.Redis`. `IMemoryCache` is per-process — in a multi-instance deployment each instance has its own cache island and invalidation does not propagate across instances.
+- **Solution:** Replace `MemoryProductCache` with `RedisProductCache` and swap the DI registration in `AddInfrastructure()` — no other file changes.
+- **Consequences:**
+  - Pros: Shared cache state across all instances; invalidation is global; standard production pattern for scaled services
+  - Cons: Infrastructure dependency (Redis instance); network latency vs. in-process; operational complexity
+
+---
 
 ### 5.2 Short-Lived Null Caching (Negative Caching)
-When a product ID does not exist, cache a sentinel `null` value for a short TTL (e.g., 30 seconds, configurable as `NullTtlSeconds`).  
-**Why it matters:** A client or bot repeatedly requesting a non-existent ID causes a repository hit on every request — an expensive no-op. Negative caching eliminates redundant reads.  
-**Why short TTL:** If the product is created later, the cache must expire quickly enough that the next `GET` retrieves the real value rather than the cached null. On `POST`, the null sentinel for that key is also explicitly removed.
+
+- **Status:** FUTURE
+- **Context/Decision:** When a product ID does not exist, cache a sentinel `null` value for a short configurable TTL (e.g., `NullTtlSeconds = 30`). On `POST`, the null sentinel for that key is explicitly removed.
+- **Solution:** Store a typed sentinel in `IProductCache` with a separate `NullTtlSeconds` TTL; call `RemoveAsync(key)` inside `CreateProduct` to unblock immediate access.
+- **Consequences:**
+  - Pros: Eliminates redundant repository hits for repeated non-existent ID lookups (e.g., bot traffic or stale client references)
+  - Cons: A product created within the TTL window is unreachable until the sentinel expires — mitigated by explicit removal on `POST`
+
+---
 
 ### 5.3 Idempotency Key for `POST`
-Accept an `Idempotency-Key` header on `POST /api/products`.  
-**Why it matters:** A client that double-clicks or retries on a network timeout can create duplicate products. Storing the key (short-lived, in cache or a dedicated store) and returning the original response on replay prevents duplicates without requiring the client to detect them.
+
+- **Status:** FUTURE
+- **Context/Decision:** Accept an `Idempotency-Key` header on `POST /api/products`. Store the key short-lived in cache and return the original response on replay.
+- **Solution:** Middleware intercepts `Idempotency-Key`; on first request stores the response DTO in cache; on replay returns the cached response without hitting the service.
+- **Consequences:**
+  - Pros: Prevents duplicate product creation on client retries or double-clicks
+  - Cons: Extra cache key namespace; TTL management for idempotency keys; client must generate and send the header
+
+---
 
 ### 5.4 Decorator Pattern — `ProductCacheDecorator`
-Extract the caching responsibility from `ProductService` into a `ProductCacheDecorator` that wraps `IProductService`.  
-**Why:** `ProductService` currently holds both business logic and cache orchestration. Separating them via the Decorator pattern produces cleaner SRP — `ProductService` contains only business logic; `ProductCacheDecorator` handles all cache reads, writes, and invalidation.
+
+- **Status:** FUTURE
+- **Context/Decision:** Extract caching responsibility from `ProductService` into a `ProductCacheDecorator` that wraps `IProductService`. `ProductService` would contain only business logic.
+- **Solution:** Register `ProductCacheDecorator` as the outer `IProductService` in DI, wrapping the inner `ProductService` — no changes to either class's internals.
+- **Consequences:**
+  - Pros: Clean SRP separation; cache behavior independently testable; swappable without touching business logic
+  - Cons: Extra class to maintain; DI registration becomes slightly more complex (decorator wiring)
+
+---
 
 ### 5.5 Health Checks
-Add `/health` endpoint via `services.AddHealthChecks()`.  
-Checks to register:
-- Memory pressure (`IMemoryCache` entry count / estimated size)
-- Repository reachability (in production: database ping)
-- Redis connectivity (if Redis is added)
+
+- **Status:** FUTURE
+- **Context/Decision:** Add `/health` endpoint via `services.AddHealthChecks()` with checks for memory pressure, repository reachability, and Redis connectivity.
+- **Solution:** Register custom `IHealthCheck` implementations for each dependency and map `/health` in `Program.cs`.
+- **Consequences:**
+  - Pros: Kubernetes-ready liveness/readiness probes; early warning on cache or storage degradation
+  - Cons: Health endpoint itself must be secured or rate-limited; memory check thresholds require tuning per environment
+
+---
 
 ### 5.6 Docker / Containerization
-Provide a `Dockerfile` and `docker-compose.yml` (including Redis container).  
-**Why it matters:** Reproducible environment, no "works on my machine" issues, and enables testing the distributed cache scenario locally.
+
+- **Status:** FUTURE
+- **Context/Decision:** Provide a `Dockerfile` and `docker-compose.yml` including a Redis container for local development.
+- **Solution:** Multi-stage `Dockerfile` (build + runtime) + `docker-compose.yml` with `redis:alpine` service and an environment variable pointing the API at it.
+- **Consequences:**
+  - Pros: Reproducible environment; enables local testing of the distributed cache scenario without a remote Redis
+  - Cons: Docker knowledge required; image size management; compose version compatibility
+
+---
 
 ### 5.7 Broader Test Coverage
-- Unit test every method individually with the `// Arrange / // Act / // Assert` structure
-- Edge cases: concurrent `POST` + `GET` during creation, version rollback attempts, `CancellationToken` propagation, validation boundary cases
-- Integration tests: full HTTP pipeline with `WebApplicationFactory<Program>`
+
+- **Status:** FUTURE
+- **Context/Decision:** Full unit test coverage per method + integration tests with `WebApplicationFactory<Program>` covering the full HTTP pipeline, including middleware, routing, and DI.
+- **Solution:** Add `WebApplicationFactory<Program>` test class; spin up the full app in-process and drive it via `HttpClient` without mocking the infrastructure.
+- **Consequences:**
+  - Pros: Catches regressions on the full request pipeline; integration tests reflect real behavior better than unit tests alone
+  - Cons: Slower test suite; `WebApplicationFactory` setup requires careful port and configuration management
 
 ---
 
