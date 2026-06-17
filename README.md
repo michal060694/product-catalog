@@ -39,7 +39,7 @@ ProductCatalog.Tests           Unit tests — xUnit + FakeItEasy
 **Prerequisites:** [.NET 9 SDK](https://dotnet.microsoft.com/download)
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/michal060694/product-catalog
 cd "Caching Strategy & Consistency/Project"
 
 dotnet restore
@@ -47,7 +47,7 @@ dotnet build
 dotnet run --project ProductCatalog.Api
 ```
 
-Swagger UI is available at `https://localhost:{port}/swagger` when running in Development mode.
+Swagger UI is available at `https://localhost:7119/swagger` when running in Development mode.
 
 ---
 
@@ -85,7 +85,7 @@ Location: /api/products/1
 }
 ```
 
-> `costPrice` is accepted on write but intentionally excluded from `ProductDto` — it is never exposed to the client or written to cache.
+> `costPrice` is accepted on write but intentionally excluded from `ProductDto` — it is never exposed to the client or written to cache. For demonstration of ability to filter sensitive information from the Client
 
 **GET /api/products/1**
 ```http
