@@ -10,7 +10,7 @@
 |---|---|---|---|
 | 1 | Cache Invalidation | Remove-only after `POST`/`PUT` — no write-back | [1.1](#11-cache-invalidation--remove-only-no-write-back) |
 | 2 | Stampede Prevention | `SharedTaskStore` (`Lazy<Task>`) — no Semaphore | [1.2](#12-stampede-prevention--sharedtaskstore-no-semaphore) |
-| 3 | GET/PUT Race Condition | Version Guard in `SetAsync` — stale write rejected | [1.3](#13-version-guard-in-setasync) |
+| 3 | GET/PUT Race Condition | Generation Guard in `SetAsync` — stale write rejected | [1.3](#13-generation-guard-in-setasync) |
 | 4 | Expiration Strategy | Absolute TTL only — no Sliding Expiration | [1.4](#14-absolute-expiration-only) |
 | 5 | Redis Readiness | `IProductCache` abstraction — swap requires one file | [1.5](#15-iproductcache-abstraction-redis-ready) |
 | 6 | Thread-Safe Repository | `ConcurrentDictionary` + `Interlocked` ID generation | [1.6](#16-concurrentdictionary-for-repository) |
@@ -18,15 +18,15 @@
 | 8 | Null / 404 Caching | Not cached — prevents masking a future creation | [1.8](#18-null--404--not-cached) |
 | 9 | TOCTOU | Per-key lock; upgrade path → Striped Locking (64 stripes) | [3](#3-toctou-time-of-check--time-of-use) |
 | 10 | Cache Poisoning | Generation counter in `RemoveAsync` → checked in `SetAsync` | [4](#4-cache-poisoning-after-invalidation) |
-| 11 | Redis (future) | `RedisProductCache : IProductCache` — zero Application changes | [5.1](#51-redis--distributed-cache) |
-| 12 | Null Caching (future) | 30 s configurable TTL + explicit removal on `POST` | [5.2](#52-short-lived-null-caching-negative-caching) |
-| 13 | Idempotency (future) | `Idempotency-Key` header on `POST` | [5.3](#53-idempotency-key-for-post) |
-| 14 | Decorator Pattern (future) | `ProductCacheDecorator` — separates cache from business logic | [5.4](#54-decorator-pattern--productcachedecorator) |
-| 15 | Health Checks (future) | `/health` — memory, repository, Redis | [5.5](#55-health-checks) |
-| 16 | Docker (future) | `Dockerfile` + `docker-compose.yml` with Redis container | [5.6](#56-docker--containerization) |
-| 17 | Test Coverage (future) | Full unit + integration tests with `WebApplicationFactory` | [5.7](#57-broader-test-coverage) |
-| 18 | Value Objects (future) | `ProductId`, `Money`, `StockQuantity` — invariants live in the type | [5.8](#58-value-objects-for-domain-primitives) |
-| 19 | Generation Dictionary Lifecycle (future) | Cleanup on DELETE + global store in distributed cache | [5.9](#59-generation-dictionary-lifecycle) |
+| 11–17 | High-Scale Architecture | Redis Cluster, distributed coalescing, persistent DB, resilience, observability, rate limiting, proactive cache refresh | [5](#5-what-would-change-at-high-scale) |
+| 18 | Null Caching (future) | 30 s configurable TTL + explicit removal on `POST` | [6.1](#61-short-lived-null-caching-negative-caching) |
+| 19 | Idempotency (future) | `Idempotency-Key` header on `POST` | [6.2](#62-idempotency-key-for-post) |
+| 20 | Decorator Pattern (future) | `ProductCacheDecorator` — separates cache from business logic | [6.3](#63-decorator-pattern--productcachedecorator) |
+| 21 | Health Checks (future) | `/health` — memory, repository, Redis | [6.4](#64-health-checks) |
+| 22 | Docker (future) | `Dockerfile` + `docker-compose.yml` with Redis container | [6.5](#65-docker--containerization) |
+| 23 | Test Coverage (future) | Full unit + integration tests with `WebApplicationFactory` | [6.6](#66-broader-test-coverage) |
+| 24 | Value Objects (future) | `ProductId`, `Money`, `StockQuantity` — invariants live in the type | [6.7](#67-value-objects-for-domain-primitives) |
+| 25 | Generation Dictionary Lifecycle (future) | Cleanup on DELETE + global store in distributed cache | [6.8](#68-generation-dictionary-lifecycle) |
 
 ---
 
@@ -35,11 +35,11 @@
 ### 1.1 Cache Invalidation — Remove Only (No Write-Back)
 
 - **Status:** APPROVED
-- **Context/Decision:** After `POST` and `PUT`, only `RemoveAsync` is called. No new value is written to cache after mutation.
-- **Solution:** `ProductService` calls `_cache.RemoveAsync(key, cancellationToken)` after every write. `RemoveAsync` increments `_generations[key]` under a per-key lock. Before querying the repository, the caller snapshots `expectedGeneration` via `GetGenerationAsync`; `SetAsync` rejects the write if `_generations[key] != expectedGeneration`.
+- **Decision:** After `POST` and `PUT`, only `RemoveAsync` is called — no new value is written to cache after mutation.
 - **Consequences:**
-  - Pros: Eliminates race window — a concurrent `GET` inflight before `PUT` cannot overwrite the freshly-invalidated entry with a stale value
+  - Pros: Eliminates race window — a concurrent `GET` in-flight before `PUT` cannot overwrite the freshly-invalidated entry with a stale value
   - Cons: First read after any mutation always hits the repository (one extra round-trip)
+- **Guard against stale in-flight writes:** see [Section 4](#4-cache-poisoning-after-invalidation)
 
 ---
 
@@ -54,15 +54,13 @@
 
 ---
 
-### 1.3 Generation + Version Guard in `SetAsync`
+### 1.3 Generation Guard in `SetAsync`
 
 - **Status:** APPROVED
-- **Context/Decision:** A `GET` issued before a `PUT` may return from the repository *after* the `PUT` has already invalidated the cache. Two guards defend against this inside `MemoryProductCache.SetAsync`, applied in order under a per-key lock.
-- **Solution:**
-  **Primary — Generation check:** `if (_generations.GetValueOrDefault(key, 0L) != expectedGeneration) → abort`. The caller snapshots `expectedGeneration` before hitting the repository; any `RemoveAsync` in between increments the counter, making the snapshot stale.
+- **Decision:** A `GET` issued before a `PUT` may return from the repository *after* the `PUT` has already invalidated the cache. The guard in `SetAsync` rejects the write in that case — full mechanism described in [Section 4](#4-cache-poisoning-after-invalidation).
 - **Consequences:**
-  - Pros: Generation check is cache-state-aware and invalidation-aware.
-  - Cons: generation counter grows monotonically and is never reset (acceptable for in-process lifetime)
+  - Pros: Generation check is cache-state-aware; stale in-flight writes are silently discarded
+  - Cons: Generation counter grows monotonically and is never reset (acceptable for in-process lifetime; see [6.9](#69-generation-dictionary-lifecycle) for the upgrade)
 
 ---
 
@@ -83,7 +81,6 @@
 - **How:** `IProductCache` defined in `Domain`; `MemoryProductCache` in `Infrastructure` is the only class that touches `IMemoryCache`.
 - **Consequences:**
   - Pros: Switching to Redis requires replacing only `MemoryProductCache` — zero changes in `Application` or `Domain`
-  - Cons: no cons
 
 ---
 
@@ -101,11 +98,10 @@
 ### 1.7 `CostPrice` — Sensitive Field Never Exposed
 
 - **Status:** APPROVED
-- **Context/Decision:** `Product.CostPrice` is a Sensitive data.
-- **Solution:** `ProductProfile` declares Ignore(), Not logged anywhere in the codebase.
+- **Decision:** `Product.CostPrice` is internal cost data — never mapped to a DTO, never logged.
+- **How:** `ProductProfile` declares `Ignore()` for `CostPrice`; no log statement references it anywhere in the codebase.
 - **Consequences:**
   - Pros: Internal cost data cannot accidentally leak to clients; opt-in mapping makes omission the safe default
-  - Cons: no cons
 
 ---
 
@@ -116,7 +112,7 @@
 - **Solution:** The factory in `SharedTaskStore` throws `ProductNotFoundException` on null — `SetAsync` is never reached for missing products and nothing is written to cache.
 - **Consequences:**
   - Pros: Newly created products become accessible immediately — no TTL wait for a null sentinel to expire
-  - Cons: Every lookup for a non-existent ID hits the repository; see [Section 5.2](#52-short-lived-null-caching-negative-caching) for the upgrade
+  - Cons: Every lookup for a non-existent ID hits the repository; see [Section 6.1](#61-short-lived-null-caching-negative-caching) for the upgrade
 
 ---
 
@@ -156,18 +152,23 @@
 
 ---
 
-## 5. What Would Be Added With More Time
+## 5. Things I would consider adding if this were scaled up
 
-### 5.1 Redis — Distributed Cache
+> Structural prerequisites for running correctly across multiple instances under sustained load — not polish items.
 
-**What:** Implement `RedisProductCache : IProductCache` using `StackExchange.Redis`, registered in place of `MemoryProductCache` via a single DI swap in `AddInfrastructure()`.  
-**Problem:** `IMemoryCache` is per-process — in a multi-instance deployment each instance has its own cache island and invalidation does not propagate across instances.
-- Pros: Shared cache state across all instances; invalidation is global; standard production pattern for scaled services
-- Cons: no cons
-
+| # | Topic | Why it matters at scale |
+|---|---|---|
+| 5.1 | **Redis Cluster + Pub/Sub Invalidation** | `IMemoryCache` is per-process — a `PUT` on one instance doesn't invalidate the others. Redis Pub/Sub broadcasts invalidation events to the entire fleet. `IProductCache` abstraction already makes this a one-file swap. |
+| 5.2 | **Distributed Request Coalescing** | `SharedTaskStore` prevents stampedes within one process only. Across N instances, N concurrent misses still produce N repository calls. Requires a distributed lock (e.g., Redis `SET NX`) to coalesce across the fleet. |
+| 5.3 | **Persistent Database + Read Replicas** | `ConcurrentDictionary` loses state on restart and isn't shared between instances. A real DB with read replicas handles durable storage and horizontal read scaling. |
+| 5.4 | **Resilience — Circuit Breaker + Retry** | Without it, a single DB hiccup queues requests until thread-pool exhaustion. |
+| 5.5 | **Observability — Distributed Tracing + Metrics** | The system is currently a black box. Cache hit rate, stampede events, and per-layer latency (p99) are invisible without OpenTelemetry traces and Prometheus metrics. |
+| 5.6 | **Rate Limiting + Backpressure** | A single client can saturate the thread pool. A bounded request queue with per-IP limits rejects excess traffic with `429`/`503` before it reaches the DB. |
 ---
 
-### 5.2 Short-Lived Null Caching (Negative Caching)
+## 6. What Would Be Added With More Time
+
+### 6.1 Short-Lived Null Caching (Negative Caching)
 
 **What:** When a product ID does not exist, store a typed sentinel value in `IProductCache` with a short dedicated TTL (e.g., `NullTtlSeconds = 30`). On `POST`, explicitly remove the sentinel for that key.  
 **Need it addresses:** Repeated lookups for non-existent IDs (e.g., bot traffic, stale client references) reach the repository on every request — a cache that only stores found products cannot shield against this.
@@ -176,7 +177,7 @@
 
 ---
 
-### 5.3 Idempotency Key for `POST`
+### 6.2 Idempotency Key for `POST`
 
 **What:** Accept an `Idempotency-Key` header on `POST /api/v1/products`. Middleware intercepts the header, stores the response DTO in cache on the first request, and returns the cached response on replay without touching the service.  
 **Need it addresses:** Client retries and double-clicks can create duplicate products — there is currently no protection against a `POST` being delivered more than once.
@@ -185,7 +186,7 @@
 
 ---
 
-### 5.4 Decorator Pattern — `ProductCacheDecorator`
+### 6.3 Decorator Pattern — `ProductCacheDecorator`
 
 **What:** Extract all caching and coalescing logic from `ProductService` into a `ProductCacheDecorator : IProductService` that wraps the inner service. Register it as the outer binding in DI — no changes to either class's internals.  
 **Need it addresses:** `ProductService` currently mixes business logic with caching concerns, which limits independent testability and violates SRP as the service grows.
@@ -194,7 +195,7 @@
 
 ---
 
-### 5.5 Health Checks
+### 6.4 Health Checks
 
 **What:** Add a `/health` endpoint via `services.AddHealthChecks()` with custom `IHealthCheck` implementations for memory pressure, repository reachability, and (when present) Redis connectivity.  
 **Need it addresses:** There is currently no operational signal for whether the service and its dependencies are healthy — a requirement for any Kubernetes liveness/readiness probe setup.
@@ -202,7 +203,7 @@
 
 ---
 
-### 5.6 Docker / Containerization
+### 6.5 Docker / Containerization
 
 **What:** Provide a multi-stage `Dockerfile` (build + runtime) and a `docker-compose.yml` with a `redis:alpine` service and an environment variable pointing the API at it.  
 **Need it addresses:** Developers currently cannot test the distributed cache scenario locally without a separately managed Redis instance — there is no reproducible environment definition.
@@ -210,7 +211,7 @@
 
 ---
 
-### 5.7 Broader Test Coverage
+### 6.6 Broader Test Coverage
 
 **What:** Two layers of additional tests:
 1. **Unit tests** — full per-method coverage for every service, repository, and cache method, including all error paths and edge cases currently not exercised
@@ -221,7 +222,7 @@
 
 ---
 
-### 5.8 Value Objects for Domain Primitives
+### 6.7 Value Objects for Domain Primitives
 
 **What:** Replace `int Id`, `decimal Price`, and `int Stock` on `Product` with three `record` Value Objects — `ProductId`, `Money`, `StockQuantity` — each validating its invariant in its constructor. DTOs stay as primitives; AutoMapper bridges the two with `ConvertUsing` converters.  
 **Need it addresses:** `Price`, `Stock`, and `Id` currently travel as raw primitives — a caller can write `new Product { Price = -50m }` and the compiler says nothing. Business rules are scattered across validators instead of living in the type.
@@ -230,7 +231,7 @@
 
 ---
 
-### 5.9 Generation Dictionary Lifecycle
+### 6.8 Generation Dictionary Lifecycle
 
 **What:** Two improvements to the `_generations` dictionary maintained in `MemoryProductCache`:
 
@@ -245,7 +246,7 @@
 
 ---
 
-## 6. Common Cache Bug Checklist
+## 7. Common Cache Bug Checklist
 
 | Bug | Mitigation in This Project |
 |---|---|
@@ -253,7 +254,7 @@
 | **Cache Stampede** | `SharedTaskStore` — single inflight task per key |
 | **GET/PUT Race Condition** | Version Guard in `SetAsync` |
 | **Cache Poisoning** | Generation counter incremented in `RemoveAsync` — stale in-flight `SetAsync` calls rejected |
-| **Caching Null** | Not cached (intentional); see [5.2](#52-short-lived-null-caching-negative-caching) for the upgrade |
+| **Caching Null** | Not cached (intentional); see [6.1](#61-short-lived-null-caching-negative-caching) for the upgrade |
 | **Expiration Strategy** | Absolute expiration only — predictable staleness window |
 | **Cache Key Collision** | `CacheKeys.ForProduct(id)` → `"product:{id}"` — namespace-scoped, extendable to `product:{tenantId}:{id}` |
 | **Memory Cache vs Distributed Cache** | `IProductCache` abstraction — Redis swap requires one file change |
