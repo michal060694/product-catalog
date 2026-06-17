@@ -3,7 +3,7 @@
 ## Project Overview
 
 Implementation of the **Caching Strategy & Consistency** assignment in .NET 9 / ASP.NET Core.  
-Goal: A Product Catalog REST API demonstrating In-Memory Caching, Cache Invalidation, Request Coalescing, and Version-Based Race Condition Prevention.  
+Goal: A Product Catalog REST API demonstrating In-Memory Caching, Cache Invalidation, Request Coalescing, and Generation-Based Race Condition Prevention.  
 Full development plan: [PLAN.md](./PLAN.md).
 
 ---
@@ -15,12 +15,12 @@ ProductCatalog.sln
 │
 ├── ProductCatalog.Domain/
 │   ├── Entities/
-│   │   └── Product.cs                    ← Entity with Version field for cache consistency
+│   │   └── Product.cs                    ← Entity: Id, Name, Price, CostPrice, Stock (no Version field)
 │   ├── Exceptions/
 │   │   └── ProductNotFoundException.cs   ← Domain exception — caught by Middleware → 404
 │   ├── Repositories/
 │   │   ├── IProductRepository.cs         ← Data contract (GetById / Add / Update)
-│   │   └── IProductCache.cs              ← Cache contract (GetAsync / SetAsync / RemoveAsync)
+│   │   └── IProductCache.cs              ← Cache contract (GetAsync / GetGenerationAsync / SetAsync / RemoveAsync)
 │   ├── Cache/
 │   │   └── CacheKeys.cs                  ← Static function: ForProduct(id) → "product:{id}"
 │   └── TaskStore/
@@ -35,7 +35,7 @@ ProductCatalog.sln
 │   │   ├── CreateProductDto.cs           ← record(Name, Price, Stock)
 │   │   └── UpdateProductDto.cs           ← record(Name, Price, Stock)
 │   ├── Mappings/
-│   │   └── ProductProfile.cs             ← AutoMapper: Product ↔ DTO (CostPrice/Version hidden)
+│   │   └── ProductProfile.cs             ← AutoMapper: Product ↔ DTO (CostPrice hidden)
 │   ├── Validators/
 │   │   ├── CreateProductDtoValidator.cs
 │   │   └── UpdateProductDtoValidator.cs
@@ -46,10 +46,10 @@ ProductCatalog.sln
 │   ├── Repositories/
 │   │   └── InMemoryProductRepository.cs  ← ConcurrentDictionary + Interlocked ID generation
 │   ├── Cache/
-│   │   ├── MemoryProductCache.cs         ← IMemoryCache + Version Guard + AbsoluteExpiration
-│   │   └── CacheSettings.cs              ← ProductTtlMinutes (default: 5, prod: 1)
+│   │   ├── MemoryProductCache.cs         ← IMemoryCache + Generation Guard (per-key lock) + AbsoluteExpiration
+│   │   └── CacheSettings.cs              ← ProductTtlMinutes (default: 5) + InFlightTimeoutSeconds (default: 30)
 │   ├── TaskStore/
-│   │   └── SharedTaskStore.cs            ← ConcurrentDictionary<string, Lazy<Task<Product?>>>
+│   │   └── SharedTaskStore.cs            ← ConcurrentDictionary<string, Lazy<Task<Product?>>> + timeout cleanup
 │   └── Extensions/
 │       └── InfrastructureServiceExtensions.cs ← AddInfrastructure()
 │
@@ -64,18 +64,15 @@ ProductCatalog.sln
 │   └── appsettings.json
 │
 └── ProductCatalog.Tests/
-    ├── Cache/
-    │   ├── MemoryProductCacheVersionGuardTests.cs
-    │   └── ProductServiceCacheTests.cs
-    ├── Concurrency/
-    │   └── ConcurrencyTests.cs
-    ├── Middleware/
-    │   └── ExceptionHandlingMiddlewareTests.cs
     ├── Services/
-    │   ├── ProductServiceCreateTests.cs
-    │   └── ProductServiceUpdateTests.cs
-    └── TaskStore/
-        └── ProductServiceCoalescingTests.cs
+    │   ├── ProductServiceGetTests.cs      ← Cache HIT/MISS, repository used only on MISS
+    │   ├── ProductServiceCreateTests.cs   ← Creation, insertion to repo, cache invalidation
+    │   └── ProductServiceUpdateTests.cs   ← Update, cache invalidation, 404
+    └── StaleDataExamples/
+        ├── CoalescingTests.cs             ← 10 concurrent requests → factory called exactly once
+        ├── StaleCacheWriteTests.cs        ← Generation guard rejects stale writes
+        ├── ConcurrentDictionaryTests.cs   ← ConcurrentDictionary thread-safety demo
+        └── TocTouTests.cs                 ← TOCTOU race condition demo
 ```
 
 **One absolute rule:** `Application` has no knowledge of `Infrastructure`. They are connected exclusively through DI in `Program.cs`.
@@ -87,11 +84,11 @@ ProductCatalog.sln
 | Category | Technology | Version |
 |---|---|---|
 | Runtime | .NET 9 / ASP.NET Core | 9.0 |
-| Cache | `IMemoryCache` wrapped in `IProductCache` | Microsoft.Extensions.Caching.Memory 10.x |
+| Cache | `IMemoryCache` wrapped in `IProductCache` | Microsoft.Extensions.Caching.Memory 10.0.9 |
 | Mapping | AutoMapper | 16.1.1 |
 | Validation | FluentValidation.AspNetCore | 11.3.1 |
-| Testing | xUnit + FakeItEasy + FluentAssertions | 2.9 / 9.0 / 8.10 |
-| API Docs | Swashbuckle (Swagger) | 10.x |
+| Testing | xUnit + FakeItEasy + FluentAssertions | 2.9.2 / 9.0.1 / 8.10.0 |
+| API Docs | Swashbuckle.AspNetCore (Swagger) | 10.2.1 |
 | Nullable | `<Nullable>enable</Nullable>` in all projects | — |
 
 ---
@@ -121,21 +118,27 @@ No `SlidingExpiration` — TTL is guaranteed and calculated simply.
 
 ### Stampede Prevention — SharedTaskStore
 `ConcurrentDictionary<string, Lazy<Task<Product?>>>`.  
-100 concurrent requests for the same uncached product produce **a single factory call**.  
-No Semaphore, no lock — Lazy guarantees atomic creation and a shared Task.  
-The Task is removed from the Dictionary in `ContinueWith` immediately after completion.
+Concurrent requests for the same uncached product produce **a single factory call**.  
+No Semaphore, no lock — `Lazy` guarantees atomic creation and a shared Task.  
+The Task is removed from the Dictionary in `ContinueWith` immediately after completion.  
+A secondary timeout (`InFlightTimeoutSeconds`, default: 30s) also evicts the entry as a safety net.
 
-### Version Guard in Cache
-`MemoryProductCache.SetAsync` checks before writing:
+### Generation Guard in Cache
+`MemoryProductCache` maintains a `ConcurrentDictionary<string, long> _generations` and a per-key lock.
+
+**Write path (`SetAsync`):** Under lock, checks:
 ```
-if existing.Version >= product.Version → do not write (cached value is newer)
+if _generations[key] != expectedGeneration → do not write (key was invalidated since factory started)
 ```
-Guards against a GET that was issued before a PUT returning after the PUT and overwriting a newer value.
+
+**Invalidation path (`RemoveAsync`):** Under lock, removes the cached entry **and** increments the generation counter.
+
+**How it prevents TOCTOU:** When `GetProductAsync` runs on a cache MISS, it captures the current generation *before* calling the repository factory. If a PUT invalidates the key while the factory is in flight, the generation increments. When the factory tries to write, it detects the mismatch and silently discards the stale value.
 
 ### CostPrice — Sensitive Data
 `Product.CostPrice` is not mapped to `ProductDto`.  
-`ProductProfile` defines `ForMember(dest => dest.CostPrice, opt => opt.Ignore())` for Create and Update.  
-**Never exposed to clients.**
+`ProductProfile` ignores `CostPrice` in all mappings.  
+**Never exposed to clients, logs, or cache responses.**
 
 ### Redis-Readiness
 `IProductCache` serves as the abstraction layer.  
@@ -181,11 +184,14 @@ IProductCache.GetAsync(key)
                     └── InFlight NEW → log "InFlight CREATED"
                                         │
                                         ▼
+                              gen = IProductCache.GetGenerationAsync(key)   ← capture generation
+                                        │
+                                        ▼
                               IProductRepository.GetById(id)
                                         ├── null → throw ProductNotFoundException → 404
                                         │
-                                        └── Product → IProductCache.SetAsync (Version Guard)
-                                                            │
+                                        └── Product → IProductCache.SetAsync(key, product, gen)
+                                                            │ (Generation Guard: discard if gen changed)
                                                             ▼
                                                   return ProductDto
 ```
@@ -259,13 +265,13 @@ Never log PII, cost prices (CostPrice), or secrets.
 
 | File | What is tested |
 |---|---|
-| `ProductServiceCacheTests` | Cache HIT/MISS, repository used only on MISS |
-| `MemoryProductCacheVersionGuardTests` | Newer version overwrites, older version does not, TTL |
-| `ConcurrencyTests` | 100 concurrent requests → factory called exactly once |
-| `ProductServiceCoalescingTests` | TaskStore called on MISS, skipped on HIT |
-| `ProductServiceCreateTests` | Creation, insertion to repo, cache invalidation |
-| `ProductServiceUpdateTests` | Update, Version++, cache invalidation, 404 |
-| `ExceptionHandlingMiddlewareTests` | 404 / 400 with fields / 500 without stack trace |
+| `Services/ProductServiceGetTests` | Cache HIT/MISS, repository used only on MISS |
+| `Services/ProductServiceCreateTests` | Creation, insertion to repo, cache invalidation |
+| `Services/ProductServiceUpdateTests` | Update, cache invalidation, 404 on missing product |
+| `StaleDataExamples/CoalescingTests` | Concurrent requests → factory called exactly once |
+| `StaleDataExamples/StaleCacheWriteTests` | Generation guard rejects stale writes after invalidation |
+| `StaleDataExamples/ConcurrentDictionaryTests` | ConcurrentDictionary thread-safety under concurrent load |
+| `StaleDataExamples/TocTouTests` | TOCTOU race condition demo and how generation guard prevents it |
 
 Run with: `dotnet test`
 
@@ -280,6 +286,7 @@ Run with: `dotnet test`
 | Stack trace in production | Middleware returns a generic message on 500 |
 | Cache key collision | `CacheKeys.ForProduct(id)` → `"product:{id}"` — extendable to `product:{tenantId}:{id}` |
 | Input injection | FluentValidation validates at the system boundary (Edge) |
+| TOCTOU stale write | Generation Guard in `SetAsync` rejects writes if key was invalidated mid-flight |
 
 ---
 

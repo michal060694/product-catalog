@@ -1,6 +1,6 @@
 # Product Catalog Cache API
 
-> Interview Assignment — Caching Strategy & Consistency (.NET 8)
+> Interview Assignment — Caching Strategy & Consistency (.NET 9)
 
 A Product Catalog REST API built to demonstrate production-grade caching correctness, consistency, invalidation, expiration, and concurrent-request safety.
 
@@ -69,7 +69,6 @@ Content-Type: application/json
 {
   "name": "Laptop",
   "price": 4999.99,
-  "costPrice": 3200.00,
   "stock": 10
 }
 ```
@@ -107,7 +106,6 @@ Content-Type: application/json
 {
   "name": "Gaming Laptop",
   "price": 5499.99,
-  "costPrice": 3600.00,
   "stock": 8
 }
 ```
